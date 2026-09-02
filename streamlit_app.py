@@ -7,13 +7,26 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Engineering Tools")
 
-st.write(
-    """
-    Colección de herramientas de ingeniería y métodos numéricos.
-    
-    Este proyecto irá creciendo con calculadoras, métodos numéricos,
-    mecánica de medios continuos, concreto, geotecnia y otras herramientas.
-    """
-)
+pages = {
+    "Engineering Tools": [
+        st.Page(
+            "pages/home.py",
+            title="Home",
+            icon="🏠",
+            default=True,
+        ),
+    ],
+    "Numerical Methods": [
+        st.Page(
+            "pages/numerical_methods/least_squares.py",
+            title="Least Squares",
+            icon="📈",
+        ),
+    ],
+}
+
+
+navigation = st.navigation(pages)
+
+navigation.run()
