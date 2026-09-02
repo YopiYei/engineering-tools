@@ -23,7 +23,20 @@ pages = {
             title="Least Squares",
             icon="📈",
         ),
+        st.Page(
+            "pages/numerical_methods/gaussian_elimination.py",
+            title="Gaussian Elimination",
+            icon="🧮",
+        ),
     ],
+    "Structural Tools": [
+        st.Page(
+            "pages/structural/section_properties.py",
+            title="Section Properties",
+            icon="📐",
+        ),
+    ],
+
 }
 
 
