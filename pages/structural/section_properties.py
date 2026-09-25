@@ -1,15 +1,22 @@
+import pandas as pd
 import streamlit as st
 
 from visualization.sections import (
     draw_rectangle,
     draw_circle,
     draw_i_section,
+    draw_aisc_shape,
 )
 
 from calculations.structural.section_properties import (
     rectangle_properties,
     circle_properties,
     i_section_properties,
+)
+
+from utils.aisc_data import (
+    load_manifest,
+    load_family,
 )
 
 from styles.main import apply_global_styles
@@ -31,476 +38,612 @@ st.title("Section Properties")
 
 
 # ---------------------------------------------------------
-# 1. Section type
+# 1. Input mode
 # ---------------------------------------------------------
 
 with st.container(border=True):
 
-    st.subheader("1. Section Type")
+    st.subheader("1. Input Mode")
 
-    section_type = st.selectbox(
-        "Select section type",
+    input_mode = st.radio(
+        "Select input mode",
         options=[
-            "Rectangle",
-            "Circle",
-            "I / W Section",
+            "Custom Dimensions",
+            "AISC Database",
         ],
+        horizontal=True,
     )
 
 
-# ---------------------------------------------------------
-# 2. Geometry
-# ---------------------------------------------------------
+# ===========================================================
+# CUSTOM DIMENSIONS MODE
+# ===========================================================
 
-with st.container(border=True):
+if input_mode == "Custom Dimensions":
 
-    st.subheader("2. Geometry")
+    # ---------------------------------------------------------
+    # 2. Section type
+    # ---------------------------------------------------------
 
-    if section_type == "Rectangle":
+    with st.container(border=True):
 
-        col1, col2 = st.columns(2)
+        st.subheader("2. Section Type")
 
-        with col1:
-            width = st.number_input(
-                "Width, b",
-                min_value=0.0,
-                value=10.0,
-            )
-
-        with col2:
-            height = st.number_input(
-                "Height, h",
-                min_value=0.0,
-                value=20.0,
-            )
-
-
-    elif section_type == "Circle":
-
-        radius = st.number_input(
-            "Radius, r",
-            min_value=0.0,
-            value=5.0,
+        section_type = st.selectbox(
+            "Select section type",
+            options=[
+                "Rectangle",
+                "Circle",
+                "I / W Section",
+            ],
         )
 
 
-    elif section_type == "I / W Section":
+    # ---------------------------------------------------------
+    # 3. Geometry
+    # ---------------------------------------------------------
 
-        col1, col2 = st.columns(2)
+    with st.container(border=True):
 
-        with col1:
-
-            depth = st.number_input(
-                "Depth, d",
-                min_value=0.0,
-                value=12.0,
-            )
-
-            flange_thickness = st.number_input(
-                "Flange thickness, tf",
-                min_value=0.0,
-                value=0.75,
-            )
-
-        with col2:
-
-            flange_width = st.number_input(
-                "Flange width, bf",
-                min_value=0.0,
-                value=8.0,
-            )
-
-            web_thickness = st.number_input(
-                "Web thickness, tw",
-                min_value=0.0,
-                value=0.5,
-            )
-
-
-# ---------------------------------------------------------
-# 3. Output detail
-# ---------------------------------------------------------
-
-with st.container(border=True):
-
-    st.subheader("3. Output Detail")
-
-    verbosity = st.selectbox(
-        "Verbosity",
-        options=[
-            VERBOSITY_RESULTS,
-            VERBOSITY_SUMMARY,
-            VERBOSITY_FULL,
-        ],
-        index=0,
-        format_func=lambda value: {
-            VERBOSITY_RESULTS: "0 - Results only",
-            VERBOSITY_SUMMARY: "1 - Summary",
-            VERBOSITY_FULL: "2 - Full calculation",
-        }[value],
-    )
-
-
-# ---------------------------------------------------------
-# 4. Calculate
-# ---------------------------------------------------------
-
-if st.button(
-    "Calculate",
-    type="primary",
-    use_container_width=True,
-):
-
-    try:
-
-        # -----------------------------------------------------
-        # Rectangle
-        # -----------------------------------------------------
+        st.subheader("3. Geometry")
 
         if section_type == "Rectangle":
 
-            if width <= 0 or height <= 0:
-                raise ValueError(
-                    "Width and height must be greater than zero."
+            col1, col2 = st.columns(2)
+
+            with col1:
+                width = st.number_input(
+                    "Width, b",
+                    min_value=0.0,
+                    value=10.0,
                 )
 
-            result = rectangle_properties(
-                width=width,
-                height=height,
-            )
-            figure = draw_rectangle(
-                width=width,
-                height=height,
-                centroid_x=result["centroid_x"],
-                centroid_y=result["centroid_y"],
-            )
+            with col2:
+                height = st.number_input(
+                    "Height, h",
+                    min_value=0.0,
+                    value=20.0,
+                )
 
-
-        # -----------------------------------------------------
-        # Circle
-        # -----------------------------------------------------
 
         elif section_type == "Circle":
 
-            if radius <= 0:
-                raise ValueError(
-                    "Radius must be greater than zero."
-                )
-
-            result = circle_properties(
-                radius=radius,
-            )
-            figure = draw_circle(
-                radius=radius,
-                centroid_x=result["centroid_x"],
-                centroid_y=result["centroid_y"],
+            radius = st.number_input(
+                "Radius, r",
+                min_value=0.0,
+                value=5.0,
             )
 
-
-        # -----------------------------------------------------
-        # I / W Section
-        # -----------------------------------------------------
 
         elif section_type == "I / W Section":
 
-            if (
-                depth <= 0
-                or flange_width <= 0
-                or flange_thickness <= 0
-                or web_thickness <= 0
-            ):
-                raise ValueError(
-                    "All dimensions must be greater than zero."
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                depth = st.number_input(
+                    "Depth, d",
+                    min_value=0.0,
+                    value=12.0,
                 )
 
-            result = i_section_properties(
-                depth=depth,
-                flange_width=flange_width,
-                flange_thickness=flange_thickness,
-                web_thickness=web_thickness,
-            )
+                flange_thickness = st.number_input(
+                    "Flange thickness, tf",
+                    min_value=0.0,
+                    value=0.75,
+                )
 
-            figure = draw_i_section(
-                depth=depth,
-                flange_width=flange_width,
-                flange_thickness=flange_thickness,
-                web_thickness=web_thickness,
-                centroid_x=result["centroid_x"],
-                centroid_y=result["centroid_y"],
-            )
+            with col2:
+
+                flange_width = st.number_input(
+                    "Flange width, bf",
+                    min_value=0.0,
+                    value=8.0,
+                )
+
+                web_thickness = st.number_input(
+                    "Web thickness, tw",
+                    min_value=0.0,
+                    value=0.5,
+                )
 
 
-        # =====================================================
-        # VERBOSITY 2
-        # =====================================================
+    # ---------------------------------------------------------
+    # 4. Output detail
+    # ---------------------------------------------------------
 
-        if verbosity >= VERBOSITY_FULL:
+    with st.container(border=True):
 
-            st.subheader("Calculation Details")
+        st.subheader("4. Output Detail")
+
+        verbosity = st.selectbox(
+            "Verbosity",
+            options=[
+                VERBOSITY_RESULTS,
+                VERBOSITY_SUMMARY,
+                VERBOSITY_FULL,
+            ],
+            index=0,
+            format_func=lambda value: {
+                VERBOSITY_RESULTS: "0 - Results only",
+                VERBOSITY_SUMMARY: "1 - Summary",
+                VERBOSITY_FULL: "2 - Full calculation",
+            }[value],
+        )
+
+
+    # ---------------------------------------------------------
+    # 5. Calculate
+    # ---------------------------------------------------------
+
+    if st.button(
+        "Calculate",
+        type="primary",
+        use_container_width=True,
+    ):
+
+        try:
+
+            # -----------------------------------------------------
+            # Rectangle
+            # -----------------------------------------------------
 
             if section_type == "Rectangle":
 
-                st.latex(
-                    r"""
-                    A = bh
-                    """
+                if width <= 0 or height <= 0:
+                    raise ValueError(
+                        "Width and height must be greater than zero."
+                    )
+
+                result = rectangle_properties(
+                    width=width,
+                    height=height,
+                )
+                figure = draw_rectangle(
+                    width=width,
+                    height=height,
+                    centroid_x=result["centroid_x"],
+                    centroid_y=result["centroid_y"],
                 )
 
-                st.latex(
-                    rf"""
-                    A =
-                    ({width:.4f})
-                    ({height:.4f})
-                    =
-                    {result["area"]:.4f}
-                    """
-                )
 
-                st.latex(
-                    r"""
-                    I_x =
-                    \frac{bh^3}{12}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    I_x =
-                    \frac{{
-                    ({width:.4f})
-                    ({height:.4f})^3
-                    }}{{
-                    12
-                    }}
-                    =
-                    {result["Ix"]:.4f}
-                    """
-                )
-
-                st.latex(
-                    r"""
-                    I_y =
-                    \frac{hb^3}{12}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    I_y =
-                    \frac{{
-                    ({height:.4f})
-                    ({width:.4f})^3
-                    }}{{
-                    12
-                    }}
-                    =
-                    {result["Iy"]:.4f}
-                    """
-                )
-
+            # -----------------------------------------------------
+            # Circle
+            # -----------------------------------------------------
 
             elif section_type == "Circle":
 
-                st.latex(
-                    r"""
-                    A = \pi r^2
-                    """
+                if radius <= 0:
+                    raise ValueError(
+                        "Radius must be greater than zero."
+                    )
+
+                result = circle_properties(
+                    radius=radius,
+                )
+                figure = draw_circle(
+                    radius=radius,
+                    centroid_x=result["centroid_x"],
+                    centroid_y=result["centroid_y"],
                 )
 
-                st.latex(
-                    rf"""
-                    A =
-                    \pi
-                    ({radius:.4f})^2
-                    =
-                    {result["area"]:.4f}
-                    """
-                )
 
-                st.latex(
-                    r"""
-                    I_x = I_y =
-                    \frac{\pi r^4}{4}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    I_x = I_y =
-                    \frac{{
-                    \pi
-                    ({radius:.4f})^4
-                    }}{{
-                    4
-                    }}
-                    =
-                    {result["Ix"]:.4f}
-                    """
-                )
-
+            # -----------------------------------------------------
+            # I / W Section
+            # -----------------------------------------------------
 
             elif section_type == "I / W Section":
 
-                st.markdown(
-                    "### Areas"
+                if (
+                    depth <= 0
+                    or flange_width <= 0
+                    or flange_thickness <= 0
+                    or web_thickness <= 0
+                ):
+                    raise ValueError(
+                        "All dimensions must be greater than zero."
+                    )
+
+                result = i_section_properties(
+                    depth=depth,
+                    flange_width=flange_width,
+                    flange_thickness=flange_thickness,
+                    web_thickness=web_thickness,
                 )
 
-                st.latex(
-                    rf"""
-                    A_f =
-                    b_f t_f
-                    =
-                    ({flange_width:.4f})
-                    ({flange_thickness:.4f})
-                    =
-                    {result["flange_area"]:.4f}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    h_w =
-                    d - 2t_f
-                    =
-                    {result["web_height"]:.4f}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    A_w =
-                    t_w h_w
-                    =
-                    ({web_thickness:.4f})
-                    ({result["web_height"]:.4f})
-                    =
-                    {result["web_area"]:.4f}
-                    """
-                )
-
-                st.markdown(
-                    "### Centroid"
-                )
-
-                st.latex(
-                    rf"""
-                    \bar{{x}}
-                    =
-                    \frac{{b_f}}{{2}}
-                    =
-                    {result["centroid_x"]:.4f}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    \bar{{y}}
-                    =
-                    \frac{{d}}{{2}}
-                    =
-                    {result["centroid_y"]:.4f}
-                    """
-                )
-
-                st.markdown(
-                    "### Moment of Inertia"
-                )
-
-                st.latex(
-                    r"""
-                    I_x =
-                    \sum
-                    \left(
-                    I_{x,i}
-                    +
-                    A_i d_i^2
-                    \right)
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    I_x =
-                    {result["Ix"]:.4f}
-                    """
-                )
-
-                st.latex(
-                    rf"""
-                    I_y =
-                    {result["Iy"]:.4f}
-                    """
+                figure = draw_i_section(
+                    depth=depth,
+                    flange_width=flange_width,
+                    flange_thickness=flange_thickness,
+                    web_thickness=web_thickness,
+                    centroid_x=result["centroid_x"],
+                    centroid_y=result["centroid_y"],
                 )
 
 
-        # =====================================================
-        # VERBOSITY 1
-        # =====================================================
+            # =====================================================
+            # VERBOSITY 2
+            # =====================================================
 
-        if verbosity >= VERBOSITY_SUMMARY:
+            if verbosity >= VERBOSITY_FULL:
 
-            st.subheader("Section Summary")
+                st.subheader("Calculation Details")
 
-            st.write(
-                f"Section type: {section_type}"
+                if section_type == "Rectangle":
+
+                    st.latex(
+                        r"""
+                        A = bh
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        A =
+                        ({width:.4f})
+                        ({height:.4f})
+                        =
+                        {result["area"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        r"""
+                        I_x =
+                        \frac{bh^3}{12}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        I_x =
+                        \frac{{
+                        ({width:.4f})
+                        ({height:.4f})^3
+                        }}{{
+                        12
+                        }}
+                        =
+                        {result["Ix"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        r"""
+                        I_y =
+                        \frac{hb^3}{12}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        I_y =
+                        \frac{{
+                        ({height:.4f})
+                        ({width:.4f})^3
+                        }}{{
+                        12
+                        }}
+                        =
+                        {result["Iy"]:.4f}
+                        """
+                    )
+
+
+                elif section_type == "Circle":
+
+                    st.latex(
+                        r"""
+                        A = \pi r^2
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        A =
+                        \pi
+                        ({radius:.4f})^2
+                        =
+                        {result["area"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        r"""
+                        I_x = I_y =
+                        \frac{\pi r^4}{4}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        I_x = I_y =
+                        \frac{{
+                        \pi
+                        ({radius:.4f})^4
+                        }}{{
+                        4
+                        }}
+                        =
+                        {result["Ix"]:.4f}
+                        """
+                    )
+
+
+                elif section_type == "I / W Section":
+
+                    st.markdown(
+                        "### Areas"
+                    )
+
+                    st.latex(
+                        rf"""
+                        A_f =
+                        b_f t_f
+                        =
+                        ({flange_width:.4f})
+                        ({flange_thickness:.4f})
+                        =
+                        {result["flange_area"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        h_w =
+                        d - 2t_f
+                        =
+                        {result["web_height"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        A_w =
+                        t_w h_w
+                        =
+                        ({web_thickness:.4f})
+                        ({result["web_height"]:.4f})
+                        =
+                        {result["web_area"]:.4f}
+                        """
+                    )
+
+                    st.markdown(
+                        "### Centroid"
+                    )
+
+                    st.latex(
+                        rf"""
+                        \bar{{x}}
+                        =
+                        \frac{{b_f}}{{2}}
+                        =
+                        {result["centroid_x"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        \bar{{y}}
+                        =
+                        \frac{{d}}{{2}}
+                        =
+                        {result["centroid_y"]:.4f}
+                        """
+                    )
+
+                    st.markdown(
+                        "### Moment of Inertia"
+                    )
+
+                    st.latex(
+                        r"""
+                        I_x =
+                        \sum
+                        \left(
+                        I_{x,i}
+                        +
+                        A_i d_i^2
+                        \right)
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        I_x =
+                        {result["Ix"]:.4f}
+                        """
+                    )
+
+                    st.latex(
+                        rf"""
+                        I_y =
+                        {result["Iy"]:.4f}
+                        """
+                    )
+
+
+            # =====================================================
+            # VERBOSITY 1
+            # =====================================================
+
+            if verbosity >= VERBOSITY_SUMMARY:
+
+                st.subheader("Section Summary")
+
+                st.write(
+                    f"Section type: {section_type}"
+                )
+
+
+            # =====================================================
+            # VERBOSITY 0
+            # Results
+            # =====================================================
+
+            st.subheader("Section")
+
+            st.plotly_chart(
+                figure,
+                use_container_width=True,
+                config={
+                    "displayModeBar": True,
+                    "scrollZoom": True,
+                },
+            )
+
+            st.subheader("Results")
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            col1.metric(
+                "Area",
+                f"{result['area']:.4f}",
+            )
+
+            col2.metric(
+                "Centroid x̄",
+                f"{result['centroid_x']:.4f}",
+            )
+
+            col3.metric(
+                "Centroid ȳ",
+                f"{result['centroid_y']:.4f}",
+            )
+
+            col4.metric(
+                "Ix",
+                f"{result['Ix']:.4f}",
+            )
+
+            col5.metric(
+                "Iy",
+                f"{result['Iy']:.4f}",
             )
 
 
-        # =====================================================
-        # VERBOSITY 0
-        # Results
-        # =====================================================
+        except ValueError as error:
 
-        st.subheader("Section")
-
-        st.plotly_chart(
-            figure,
-            use_container_width=True,
-            config={
-                "displayModeBar": True,
-                "scrollZoom": True,
-            },
-        )
-
-        st.subheader("Results")
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        col1.metric(
-            "Area",
-            f"{result['area']:.4f}",
-        )
-
-        col2.metric(
-            "Centroid x̄",
-            f"{result['centroid_x']:.4f}",
-        )
-
-        col3.metric(
-            "Centroid ȳ",
-            f"{result['centroid_y']:.4f}",
-        )
-
-        col4.metric(
-            "Ix",
-            f"{result['Ix']:.4f}",
-        )
-
-        col5.metric(
-            "Iy",
-            f"{result['Iy']:.4f}",
-        )
+            st.error(
+                str(error)
+            )
 
 
-    except ValueError as error:
+        except Exception as error:
 
-        st.error(
-            str(error)
-        )
+            st.error(
+                f"An unexpected error occurred: {error}"
+            )
 
 
-    except Exception as error:
+# ===========================================================
+# AISC DATABASE MODE
+# ===========================================================
 
-        st.error(
-            f"An unexpected error occurred: {error}"
-        )
+else:
+
+    # ---------------------------------------------------------
+    # 2. Shape selection
+    # ---------------------------------------------------------
+
+    with st.container(border=True):
+
+        st.subheader("2. AISC Shape Selection")
+
+        manifest = load_manifest()
+        family_labels = {
+            item["label"]: item["key"]
+            for item in manifest
+        }
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            family_label = st.selectbox(
+                "Shape family",
+                options=list(family_labels.keys()),
+            )
+
+        family_key = family_labels[family_label]
+        shapes = load_family(family_key)
+        shape_names = sorted(shapes.keys())
+
+        with col2:
+
+            shape_name = st.selectbox(
+                "Shape",
+                options=shape_names,
+            )
+
+        gap = 0.375
+
+        if family_key == "double_angles":
+
+            gap_label = st.selectbox(
+                "Separation between angles",
+                options=["0", "3/8", "3/4"],
+                index=1,
+            )
+
+            gap = {
+                "0": 0.0,
+                "3/8": 0.375,
+                "3/4": 0.75,
+            }[gap_label]
+
+
+    # ---------------------------------------------------------
+    # 3. Show properties
+    # ---------------------------------------------------------
+
+    if st.button(
+        "Show Properties",
+        type="primary",
+        use_container_width=True,
+    ):
+
+        try:
+
+            properties = shapes[shape_name]
+
+            figure = draw_aisc_shape(
+                family_key,
+                properties,
+                gap=gap,
+                shape_name=shape_name,
+            )
+
+            st.subheader("Section")
+
+            st.plotly_chart(
+                figure,
+                use_container_width=True,
+                config={
+                    "displayModeBar": True,
+                    "scrollZoom": True,
+                },
+            )
+
+            st.subheader("Properties")
+
+            table = pd.DataFrame(
+                [
+                    {"Property": key, "Value": value}
+                    for key, value in properties.items()
+                ]
+            )
+
+            st.dataframe(
+                table,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
+        except Exception as error:
+
+            st.error(
+                f"An unexpected error occurred: {error}"
+            )

@@ -1,0 +1,44 @@
+[
+  {
+    "key": "w_m_s_hp",
+    "label": "W, M, S & HP Shapes",
+    "file": "w_m_s_hp.json",
+    "count": 331
+  },
+  {
+    "key": "c_mc",
+    "label": "Channels (C, MC)",
+    "file": "c_mc.json",
+    "count": 70
+  },
+  {
+    "key": "wt_mt_st",
+    "label": "Structural Tees (WT, MT, ST)",
+    "file": "wt_mt_st.json",
+    "count": 316
+  },
+  {
+    "key": "single_angles",
+    "label": "Single Angles (L)",
+    "file": "single_angles.json",
+    "count": 127
+  },
+  {
+    "key": "double_angles",
+    "label": "Double Angles (2L)",
+    "file": "double_angles.json",
+    "count": 199
+  },
+  {
+    "key": "hss_rect",
+    "label": "Rectangular & Square HSS",
+    "file": "hss_rect.json",
+    "count": 367
+  },
+  {
+    "key": "hss_round",
+    "label": "Round HSS & Pipes",
+    "file": "hss_round.json",
+    "count": 165
+  }
+]
