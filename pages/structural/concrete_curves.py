@@ -308,7 +308,9 @@ if generate_button:
                 text=f"Peak<br>σ={stress_comp[max_comp_idx]:.1f} MPa",
                 showarrow=True,
                 bgcolor="rgba(255,255,255,0.9)",
-                font=dict(size=10),
+                bordercolor="rgb(31, 119, 180)",
+                borderwidth=1,
+                font=dict(size=10, color="#1a1a1a"),
             )
 
             fig.add_annotation(
@@ -317,7 +319,9 @@ if generate_button:
                 text=f"ft={stress_tens[max_tens_idx]:.3f} MPa",
                 showarrow=True,
                 bgcolor="rgba(255,255,255,0.9)",
-                font=dict(size=10),
+                bordercolor="rgb(214, 39, 40)",
+                borderwidth=1,
+                font=dict(size=10, color="#1a1a1a"),
             )
 
             # Add zero lines
@@ -418,7 +422,7 @@ if generate_button:
                                 bgcolor="rgba(255,255,255,0.8)",
                                 bordercolor=color_map[fc_val],
                                 borderwidth=1,
-                                font=dict(size=8),
+                                font=dict(size=8, color="#1a1a1a"),
                                 ax=20,
                                 ay=-20,
                             )
@@ -474,7 +478,7 @@ if generate_button:
                                 bgcolor="rgba(255,255,255,0.8)",
                                 bordercolor=color_map[fc_val],
                                 borderwidth=1,
-                                font=dict(size=8),
+                                font=dict(size=8, color="#1a1a1a"),
                                 ax=-20,
                                 ay=-20,
                             )
