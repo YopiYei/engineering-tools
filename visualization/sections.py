@@ -1,13 +1,13 @@
 import numpy as np
 import plotly.graph_objects as go
 
-SECTION_LINE_COLOR = "#EAEAEA"
-CENTROID_AXIS_COLOR = "#9CA3AF"
-CENTROID_COLOR = "#4FC3F7"
-TEXT_COLOR = "#EAEAEA"
+SECTION_LINE_COLOR = "#2C3E50"
+CENTROID_AXIS_COLOR = "#7F8C8D"
+CENTROID_COLOR = "#3498DB"
+TEXT_COLOR = "#1a1a1a"
 
-DIMENSION_COLOR = "#F59E0B"
-DIMENSION_TEXT_COLOR = "#FDE68A"
+DIMENSION_COLOR = "#E67E22"
+DIMENSION_TEXT_COLOR = "#8B5A00"
 
 def _format_section_figure(fig, title=None):
 
@@ -26,20 +26,24 @@ def _format_section_figure(fig, title=None):
     )
 
     fig.update_layout(
-        title=title,
+        title=dict(
+            text=title,
+            font=dict(size=18, color=TEXT_COLOR),
+        ),
         showlegend=False,
         height=500,
         margin=dict(
-            l=20,
-            r=20,
-            t=50,
-            b=20,
+            l=40,
+            r=40,
+            t=80,
+            b=40,
         ),
         font=dict(
             color=TEXT_COLOR,
+            size=12,
         ),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0.5)",
+        paper_bgcolor="white",
     )
 
     return fig
@@ -200,7 +204,13 @@ def draw_circle(
                 mode="markers+text",
                 text=["C"],
                 textposition="top right",
-                marker=dict(size=10),
+                marker=dict(
+                    size=10,
+                    color=CENTROID_COLOR,
+                ),
+                textfont=dict(
+                    color=TEXT_COLOR,
+                ),
                 hovertemplate=(
                     "Centroid"
                     "<br>x = %{x:.4f}"
@@ -218,7 +228,7 @@ def draw_circle(
             y1=centroid_y,
             line=dict(
                 width=2,
-                color=SECTION_LINE_COLOR,
+                color=CENTROID_AXIS_COLOR,
             ),
         )
 
@@ -231,7 +241,7 @@ def draw_circle(
             line=dict(
                 dash="dash",
                 width=1,
-                color=SECTION_LINE_COLOR,
+                color=CENTROID_AXIS_COLOR,
             ),
         )
 
@@ -335,7 +345,13 @@ def draw_i_section(
                 mode="markers+text",
                 text=["C"],
                 textposition="top right",
-                marker=dict(size=10),
+                marker=dict(
+                    size=10,
+                    color=CENTROID_COLOR,
+                ),
+                textfont=dict(
+                    color=TEXT_COLOR,
+                ),
                 hovertemplate=(
                     "Centroid"
                     "<br>x = %{x:.4f}"
@@ -354,7 +370,7 @@ def draw_i_section(
             line=dict(
                 dash="dash",
                 width=1,
-                color=SECTION_LINE_COLOR,
+                color=CENTROID_AXIS_COLOR,
             ),
         )
 
@@ -367,7 +383,7 @@ def draw_i_section(
             line=dict(
                 dash="dash",
                 width=1,
-                color=SECTION_LINE_COLOR,
+                color=CENTROID_AXIS_COLOR,
             ),
         )
 
