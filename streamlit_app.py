@@ -35,6 +35,11 @@ pages = {
             title="Section Properties",
             icon="📐",
         ),
+        st.Page(
+            "pages/structural/concrete_curves.py",
+            title="Concrete Stress-Strain",
+            icon="🏗️",
+        ),
     ],
 
 }
