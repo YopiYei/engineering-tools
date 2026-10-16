@@ -45,6 +45,11 @@ pages = {
             title="Concrete Stress-Strain",
             icon="🏗️",
         ),
+        st.Page(
+            "pages/structural/column_axial_response.py",
+            title="Column Axial Response",
+            icon="🧱",
+        ),
     ],
 
 }
