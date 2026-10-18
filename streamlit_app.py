@@ -1,5 +1,7 @@
 import streamlit as st
 
+from tools_registry import build_navigation
+
 
 st.set_page_config(
     page_title="Engineering Tools",
@@ -7,54 +9,6 @@ st.set_page_config(
     layout="wide",
 )
 
-
-pages = {
-    "Engineering Tools": [
-        st.Page(
-            "pages/home.py",
-            title="Home",
-            icon="🏠",
-            default=True,
-        ),
-    ],
-    "Numerical Methods": [
-        st.Page(
-            "pages/numerical_methods/least_squares.py",
-            title="Least Squares",
-            icon="📈",
-        ),
-        st.Page(
-            "pages/numerical_methods/gaussian_elimination.py",
-            title="Gaussian Elimination",
-            icon="🧮",
-        ),
-    ],
-    "Structural Tools": [
-        st.Page(
-            "pages/structural/section_properties.py",
-            title="Section Properties",
-            icon="📐",
-        ),
-        st.Page(
-            "pages/structural/section_classification.py",
-            title="Section Classification",
-            icon="🔍",
-        ),
-        st.Page(
-            "pages/structural/concrete_curves.py",
-            title="Concrete Stress-Strain",
-            icon="🏗️",
-        ),
-        st.Page(
-            "pages/structural/column_axial_response.py",
-            title="Column Axial Response",
-            icon="🧱",
-        ),
-    ],
-
-}
-
-
-navigation = st.navigation(pages)
+navigation = st.navigation(build_navigation())
 
 navigation.run()
