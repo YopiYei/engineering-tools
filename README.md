@@ -2,6 +2,8 @@
 
 Aplicación Streamlit con herramientas de ingeniería estructural y métodos numéricos.
 
+> Historial de cambios, validación y pendientes: [README_CAMBIOS.md](README_CAMBIOS.md).
+
 ```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
