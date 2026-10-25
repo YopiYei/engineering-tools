@@ -167,3 +167,125 @@ def strain_profile_figure(result: MomentCurvatureResult, index: int) -> go.Figur
     fig.add_vline(x=0.0, line=dict(color="black", width=1))
     return _layout(fig, f"Perfil de deformaciones, φ = {state.phi * PHI_UNIT:.2f} µrad/mm", "Deformación, ε (compresión positiva)",
                    "Posición y desde la mitad del peralte (mm)", height=460)
+
+
+# =========================================================================================
+# Corte de la sección (concreto, núcleo, barras longitudinales, estribos y cotas)
+# =========================================================================================
+
+CONCRETE_COLOR = "#d9d9d9"
+CORE_COLOR = "#b9d3ee"
+STIRRUP_COLOR = "#1f3a93"
+BAR_COLOR = "#a01c1c"
+DIMENSION_COLOR = "#9aa0a6"  # gris medio: legible en tema claro y oscuro
+
+
+def _dimension(fig, start, end, text, text_shift=(0.0, 0.0), text_angle=0):
+    """Cota: flecha de doble punta entre dos puntos y su texto (coordenadas de datos)."""
+    fig.add_annotation(x=end[0], y=end[1], ax=start[0], ay=start[1], xref="x", yref="y", axref="x", ayref="y",
+                       showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=1.2, arrowside="end+start",
+                       arrowcolor=DIMENSION_COLOR, text="")
+    middle = ((start[0] + end[0]) / 2.0 + text_shift[0], (start[1] + end[1]) / 2.0 + text_shift[1])
+    fig.add_annotation(x=middle[0], y=middle[1], text=text, showarrow=False, textangle=text_angle,
+                       font=dict(size=12, color=DIMENSION_COLOR))
+
+
+def section_figure(section, octagonal: bool = False, legs_x: int = 2, legs_y: int = 2) -> go.Figure:
+    """Corte acotado de la sección: concreto, núcleo confinado, estribos y barras longitudinales.
+
+    Se dibuja a escala con la cara comprimida arriba. `octagonal` agrega el estribo octagonal del
+    arreglo cuadrado + octagonal; `legs_x` y `legs_y` agregan ganchos suplementarios (ramas
+    adicionales a las 2 del estribo perimetral) cuando el acero transversal se define por ramas.
+    """
+    b, h = section.width_mm, section.depth_mm
+    ds = section.transverse.bar_diameter_mm
+    tc = section.hoop_centreline_cover_mm  # eje del estribo
+    unit = max(b, h) * 0.075  # separación base de las cotas
+    # Espesor de las líneas de estribo en píxeles, proporcional al diámetro real (unos 430 px para h)
+    stirrup_width = max(2.0, ds * 430.0 / h)
+
+    fig = go.Figure()
+    fig.add_shape(type="rect", x0=0, y0=0, x1=b, y1=h, fillcolor=CONCRETE_COLOR, line=dict(color="#555555", width=2), layer="below")
+    fig.add_shape(type="rect", x0=tc, y0=tc, x1=b - tc, y1=h - tc, fillcolor=CORE_COLOR, line=dict(width=0), layer="below")
+
+    def stirrup(xs, ys):
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=STIRRUP_COLOR, width=stirrup_width),
+                                 showlegend=False, hoverinfo="skip"))
+
+    # Estribo perimetral al eje del estribo
+    stirrup([tc, b - tc, b - tc, tc, tc], [tc, tc, h - tc, h - tc, tc])
+    core_w, core_d = b - 2 * tc, h - 2 * tc
+    if octagonal:  # octágono inscrito en el núcleo
+        cut = min(core_w, core_d) / (2.0 + 2.0**0.5)
+        x0, x1, y0, y1 = tc, b - tc, tc, h - tc
+        stirrup([x0 + cut, x1 - cut, x1, x1, x1 - cut, x0 + cut, x0, x0, x0 + cut],
+                [y0, y0, y0 + cut, y1 - cut, y1, y1, y1 - cut, y0 + cut, y0])
+    for k in range(1, int(legs_x) - 1):  # ganchos paralelos al eje x
+        y = tc + core_d * k / (int(legs_x) - 1)
+        stirrup([tc, b - tc], [y, y])
+    for k in range(1, int(legs_y) - 1):  # ganchos paralelos al eje y
+        x = tc + core_w * k / (int(legs_y) - 1)
+        stirrup([x, x], [tc, h - tc])
+
+    # Barras longitudinales (a escala) y su información al pasar el cursor
+    hover_x, hover_y, hover_text = [], [], []
+    for number, layer in enumerate(section.layers, start=1):
+        y_bar = h - layer.depth_mm
+        for x_rel in section.layer_x_positions(layer):
+            x_bar, r = b / 2.0 + x_rel, layer.diameter_mm / 2.0
+            fig.add_shape(type="circle", x0=x_bar - r, y0=y_bar - r, x1=x_bar + r, y1=y_bar + r,
+                          fillcolor=BAR_COLOR, line=dict(color="#4a0d0d", width=1))
+            hover_x.append(x_bar)
+            hover_y.append(y_bar)
+            hover_text.append(f"Capa {number}: {layer.count} Ø{layer.diameter_mm:g} mm<br>"
+                              f"a {layer.depth_mm:g} mm de la cara comprimida")
+    fig.add_trace(go.Scatter(x=hover_x, y=hover_y, mode="markers", marker=dict(size=10, opacity=0), hovertext=hover_text,
+                             hoverinfo="text", showlegend=False))
+
+    # Cotas generales: ancho y peralte, y dimensiones del núcleo (eje del estribo)
+    _dimension(fig, (0, -unit), (b, -unit), f"b = {b:g} mm", text_shift=(0, -0.55 * unit))
+    _dimension(fig, (tc, -2.1 * unit), (b - tc, -2.1 * unit), f"b″ = {core_w:g} mm (núcleo, al eje del estribo)",
+               text_shift=(0, -0.55 * unit))
+    right = b + 3.4 * unit
+    _dimension(fig, (right, 0), (right, h), f"h = {h:g} mm", text_shift=(0.5 * unit, 0), text_angle=-90)
+    _dimension(fig, (right + 1.7 * unit, tc), (right + 1.7 * unit, h - tc), f"d″ = {core_d:g} mm",
+               text_shift=(0.5 * unit, 0), text_angle=-90)
+
+    # Recubrimiento libre (hasta el estribo), arriba a la izquierda
+    cover = section.clear_cover_mm
+    if cover > 0:
+        fig.add_annotation(x=cover / 2.0, y=h, ax=0.0, ay=h + 1.2 * unit, xref="x", yref="y", axref="x", ayref="y",
+                           showarrow=True, arrowhead=2, arrowcolor=DIMENSION_COLOR,
+                           text=f"recubrimiento libre r = {cover:g} mm", xanchor="left", yshift=6,
+                           font=dict(size=12, color=DIMENSION_COLOR))
+
+    # Capas: profundidad desde la cara comprimida (izquierda) y número y diámetro (derecha)
+    for layer in section.layers:
+        y_bar = h - layer.depth_mm
+        x_edge = b / 2.0 + section.layer_x_positions(layer)[0] - layer.diameter_mm / 2.0
+        fig.add_shape(type="line", x0=-0.15 * unit, x1=x_edge, y0=y_bar, y1=y_bar, line=dict(color="#888888", width=1, dash="dot"))
+        fig.add_annotation(x=-0.25 * unit, y=y_bar, text=f"{layer.depth_mm:.1f}", showarrow=False, xanchor="right",
+                           font=dict(size=11, color=DIMENSION_COLOR))
+        fig.add_annotation(x=b + 0.3 * unit, y=y_bar, text=f"<b>{layer.count} Ø{layer.diameter_mm:g}</b>", showarrow=False,
+                           xanchor="left", font=dict(size=12, color=BAR_COLOR))
+    fig.add_annotation(x=-0.25 * unit, y=h + 0.2 * unit, text="profundidad (mm)", showarrow=False, xanchor="right",
+                       yanchor="bottom", font=dict(size=11, color=DIMENSION_COLOR))
+    fig.add_annotation(x=b, y=h + 1.2 * unit, text="▼ cara comprimida", showarrow=False, xanchor="right",
+                       font=dict(size=12, color=DIMENSION_COLOR))
+
+    # Leyenda con muestras de cada elemento
+    for name, color, symbol in (("Concreto no confinado (recubrimiento)", CONCRETE_COLOR, "square"),
+                                ("Núcleo confinado", CORE_COLOR, "square"),
+                                (f"Estribos Ø{ds:g} @ {section.transverse.spacing_mm:g} mm", STIRRUP_COLOR, "line-ew"),
+                                ("Barras longitudinales", BAR_COLOR, "circle")):
+        marker = dict(symbol=symbol, size=14, color=color, line=dict(color=color, width=3 if symbol == "line-ew" else 1))
+        fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", marker=marker, name=name))
+
+    steel_ratio = section.steel_area_mm2 / section.gross_area_mm2
+    fig.update_xaxes(visible=False, range=[-3.6 * unit, right + 3.2 * unit], constrain="domain")
+    fig.update_yaxes(visible=False, range=[-3.4 * unit, h + 2.4 * unit], scaleanchor="x", scaleratio=1)
+    fig.update_layout(template="plotly_white", height=620, hovermode="closest",
+                      title=f"Corte de la sección: {section.number_of_bars} barras, "
+                            f"As = {section.steel_area_mm2:,.0f} mm² (ρ = {steel_ratio:.2%})",
+                      legend=dict(orientation="h", y=-0.02, yanchor="top"), margin=dict(l=10, r=10, t=60, b=10))
+    return fig

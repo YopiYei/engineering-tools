@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -16,9 +17,11 @@ from calculations.structural.column_examples import (
     SECTION_SIZE_MM,
     SOESIANAWATI_UNITS,
     unit_model,
+    unit_section,
 )
 from calculations.structural.column_materials import ReinforcingSteel
 from calculations.structural.column_section import (
+    BarLayer,
     RectangularSection,
     TransverseReinforcement,
     equivalent_octagonal_area_mm2,
@@ -30,6 +33,7 @@ from visualization.column_plots import (
     material_curves_figure,
     moment_curvature_figure,
     neutral_axis_figure,
+    section_figure,
     strain_evolution_figure,
     strain_profile_figure,
 )
@@ -60,6 +64,12 @@ TABLE_LABELS = {
 }
 
 
+def same_layers(bars, reference_layers):
+    """Compara las capas ingresadas (profundidad, número, diámetro) con las del ejemplo."""
+    expected = [(layer.depth_mm, layer.count, layer.diameter_mm) for layer in reference_layers]
+    return len(bars) == len(expected) and bool(np.allclose(np.array(bars, dtype=float), np.array(expected, dtype=float), atol=1e-6))
+
+
 def is_unmodified_example(reference, current):
     """True si los datos son exactamente los publicados de la unidad `reference` (la comparación solo vale así)."""
     return (
@@ -69,7 +79,7 @@ def is_unmodified_example(reference, current):
         and abs(current["P"] - reference.axial_load_n / 1e3) < 1e-6
         and current["steel"] == (HD16_STEEL.yield_stress, HD16_STEEL.ultimate_stress, HD16_STEEL.elastic_modulus,
                                  HD16_STEEL.hardening_strain, HD16_STEEL.ultimate_strain, HD16_STEEL.hardening_modulus)
-        and current["bars"] == (4, 4, 16.0)
+        and same_layers(current["bars"], unit_section(reference).layers)
         and current["stirrup"][:3] == (reference.stirrup_diameter_mm, reference.stirrup_spacing_mm, reference.stirrup_yield_mpa)
         and current["stirrup"][3].startswith("Cuadrado") and current["stirrup"][6:] == (None, None)
         and current["confinement"] == (None, None)
@@ -224,11 +234,49 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.subheader("3. Refuerzo longitudinal y transversal")
-    st.markdown("**Barras longitudinales** (distribuidas en el perímetro)")
-    r1, r2, r3 = st.columns(3)
-    bars_tb = number("Barras en la cara superior (e inferior), con esquinas", 4, "ntb", min_value=2, step=1)
-    bars_sides = number("Barras en cada cara lateral, con esquinas", 4, "nside", min_value=2, step=1)
-    bar_diameter = number("Diámetro de barra longitudinal (mm)", 16.0, "db", min_value=6.0, step=1.0)
+    st.markdown("**Barras longitudinales** — una fila por capa, de la cara comprimida (arriba) a la cara inferior")
+    default_layers = unit_section(unit).layers
+    layers_table = st.data_editor(
+        pd.DataFrame(
+            {
+                "Profundidad (mm)": [layer.depth_mm for layer in default_layers],
+                "N° de barras": [layer.count for layer in default_layers],
+                "Diámetro (mm)": [layer.diameter_mm for layer in default_layers],
+            }
+        ),
+        key=f"{PREFIX}_layers",
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Profundidad (mm)": st.column_config.NumberColumn(
+                "Profundidad (mm)", help="Distancia de la cara comprimida al centro de las barras de la capa.",
+                min_value=1.0, step=1.0, format="%.1f", required=True),
+            "N° de barras": st.column_config.NumberColumn(
+                "N° de barras", help="Barras de la capa, repartidas a todo el ancho (mínimo 2).",
+                min_value=2, step=1, format="%d", required=True),
+            "Diámetro (mm)": st.column_config.NumberColumn(
+                "Diámetro (mm)", min_value=6.0, step=1.0, format="%.1f", required=True),
+        },
+    )
+    st.caption(
+        "La primera y la última fila son las capas de las caras superior e inferior; las filas intermedias son las barras "
+        "de las caras laterales. Si cambia el recubrimiento o el diámetro del estribo, ajuste las profundidades."
+    )
+    try:
+        rows = layers_table.dropna()
+        layers = tuple(
+            BarLayer(float(row["Profundidad (mm)"]), int(row["N° de barras"]) if float(row["N° de barras"]).is_integer() else float(row["N° de barras"]),
+                     float(row["Diámetro (mm)"]))
+            for _, row in rows.iterrows()
+        )
+        if len(layers) < 2:
+            raise ValueError("Ingrese al menos 2 capas de barras (la superior y la inferior).")
+    except ValueError as error:
+        st.error(str(error))
+        st.stop()
+    layers_sorted = sorted(layers, key=lambda layer: layer.depth_mm)
+    bars_signature = tuple((layer.depth_mm, int(layer.count), layer.diameter_mm) for layer in layers_sorted)
 
     st.markdown("**Estribos**")
     t1, t2, t3 = st.columns(3)
@@ -258,9 +306,9 @@ with st.container(border=True):
     if not all_supported:
         p1, p2 = st.columns(2)
         with p1:
-            supported_tb = number("Barras apoyadas en la cara superior (e inferior)", 2, "sup_tb", min_value=2, max_value=int(bars_tb), step=1)
+            supported_tb = number("Barras apoyadas en la cara superior (e inferior)", 2, "sup_tb", min_value=2, max_value=int(min(layers_sorted[0].count, layers_sorted[-1].count)), step=1)
         with p2:
-            supported_sides = number("Barras apoyadas en cada cara lateral", 2, "sup_sd", min_value=2, max_value=int(bars_sides), step=1)
+            supported_sides = number("Barras apoyadas en cada cara lateral", 2, "sup_sd", min_value=2, max_value=len(layers_sorted), step=1)
 
     confinement_mode = st.radio(
         "Resistencia del núcleo confinado",
@@ -288,7 +336,7 @@ with st.container(border=True):
                 stirrup_diameter, stirrup_spacing, stirrup_fy, int(legs_x), int(legs_y),
                 supported_bars_top_bottom=supported_tb, supported_bars_sides=supported_sides,
             )
-        section = RectangularSection(width_mm, depth_mm, cover_mm, int(bars_tb), int(bars_sides), bar_diameter, transverse)
+        section = RectangularSection(width_mm, depth_mm, cover_mm, layers, transverse)
         concrete = ConcreteProperties(fco, eps_co, eps_spall, ft, ec)
         steel = ReinforcingSteel(fy, fsu, es, esh, esu, esh_mod)
         computed = confine_rectangular_core(section, fco, eps_co)
@@ -307,6 +355,16 @@ with st.container(border=True):
     d4.metric("f'l (x / y) (MPa)", f"{confinement.lateral_stress_x:.2f} / {confinement.lateral_stress_y:.2f}")
     d5.metric("f'cc (MPa)", f"{confinement.confined_strength:.2f}", f"×{confinement.strength_ratio:.3f}", delta_color="off")
     d6.metric("εcc", f"{confinement.confined_strain:.5f}")
+
+    st.markdown("**Corte de la sección** (a escala, con el refuerzo ingresado)")
+    st.plotly_chart(
+        section_figure(section, octagonal=arrangement.startswith("Cuadrado"), legs_x=int(legs_x), legs_y=int(legs_y)),
+        use_container_width=True,
+    )
+    st.caption(
+        "Gris: concreto no confinado (recubrimiento). Azul claro: núcleo confinado, limitado por el eje del estribo. "
+        "Cotas en mm; las profundidades de las capas se miden desde la cara comprimida."
+    )
 
 # ---------------------------------------------------------
 # 4. Parámetros del análisis
@@ -358,7 +416,7 @@ with st.container(border=True):
 
 inputs = {
     "choice": choice, "b": width_mm, "h": depth_mm, "cover": cover_mm, "fco": fco, "eco": eps_co, "spall": eps_spall,
-    "ft": ft, "ec": ec, "steel": (fy, fsu, es, esh, esu, esh_mod), "bars": (bars_tb, bars_sides, bar_diameter),
+    "ft": ft, "ec": ec, "steel": (fy, fsu, es, esh, esu, esh_mod), "bars": bars_signature,
     "stirrup": (stirrup_diameter, stirrup_spacing, stirrup_fy, arrangement, legs_x, legs_y, supported_tb, supported_sides),
     "confinement": (manual_fcc, manual_ecc), "P": axial_kn, "strips": strips,
     "increments": (schedule, uniform_increment, increment_factor),

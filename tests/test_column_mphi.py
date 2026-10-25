@@ -38,7 +38,7 @@ from calculations.structural.column_examples import (
     unit_settings,
 )
 from calculations.structural.column_materials import PopovicsConcrete, ReinforcingSteel
-from calculations.structural.column_section import RectangularSection, TransverseReinforcement, build_mesh
+from calculations.structural.column_section import BarLayer, RectangularSection, TransverseReinforcement, bar_area, build_mesh
 
 UNITS = sorted(SOESIANAWATI_UNITS)
 
@@ -175,11 +175,11 @@ def test_mesh_conserves_concrete_and_steel_area():
 def test_invalid_sections_are_rejected():
     stirrup = TransverseReinforcement.from_legs(10.0, 100.0, 300.0, 2, 2)
     with pytest.raises(ValueError):
-        RectangularSection(300, 300, 160, 3, 3, 20, stirrup)  # sin núcleo
+        RectangularSection.with_perimeter_bars(300, 300, 160, 3, 3, 20, stirrup)  # sin núcleo
     with pytest.raises(ValueError):
-        RectangularSection(300, 300, 40, 12, 3, 25, stirrup)  # barras traslapadas
+        RectangularSection.with_perimeter_bars(300, 300, 40, 12, 3, 25, stirrup)  # barras traslapadas
     with pytest.raises(ValueError):
-        RectangularSection(300, 300, 40, 1, 3, 20, stirrup)  # menos de 2 barras por cara
+        RectangularSection.with_perimeter_bars(300, 300, 40, 1, 3, 20, stirrup)  # menos de 2 barras por cara
     with pytest.raises(ValueError):
         TransverseReinforcement.from_legs(10.0, 100.0, 300.0, 1, 2)
 
@@ -230,7 +230,7 @@ def test_matches_existing_moment_curvature_module():
     fc, fy, es = 28.0, 420.0, 200000.0
     steel = ReinforcingSteel(fy, 1.5 * fy, es, 0.01, 0.12, es / 60.0)
     stirrup = TransverseReinforcement.from_legs(10.0, 100.0, 420.0, 2, 2)
-    section = RectangularSection(300.0, 500.0, 40.0, 3, 2, 25.0, stirrup)
+    section = RectangularSection.with_perimeter_bars(300.0, 500.0, 40.0, 3, 2, 25.0, stirrup)
     concrete = ConcreteProperties(fc, 0.002, 0.006, tensile_strength=0.0, elastic_modulus=4700.0 * fc**0.5)
     unconfined = ConfinementResult(1.0, 0.0, 0.0, 0.0, 0.0, fc, 0.002, 1.0)  # núcleo = concreto no confinado
     model = build_column_model(section, concrete, steel, confinement=unconfined, number_of_strips=100)
@@ -377,3 +377,107 @@ def test_bisect_accepts_descending_interval_and_rejects_no_sign_change():
     with pytest.raises(ValueError):
         bisect(lambda x: x**2 + 1.0, -1.0, 1.0)
     assert maximize_bounded(lambda x: -(x - 0.7) ** 2, 0.0, 2.0, xtol=1e-10) == pytest.approx(0.7, abs=1e-7)
+
+
+# ---------------------------------------------------------------- capas de barras generales
+
+def _asymmetric_model():
+    """Sección tipo viga: 2 barras de 16 mm arriba y 3 de 25 mm abajo (diámetros y número distintos)."""
+    fy, es = 420.0, 200000.0
+    steel = ReinforcingSteel(fy, 1.5 * fy, es, 0.01, 0.12, es / 60.0)
+    stirrup = TransverseReinforcement.from_legs(10.0, 100.0, 420.0, 2, 2)
+    layers = (BarLayer(58.0, 2, 16.0), BarLayer(437.5, 3, 25.0))
+    section = RectangularSection(300.0, 500.0, 40.0, layers, stirrup)
+    return build_column_model(section, ConcreteProperties(28.0, 0.002, 0.008), steel)
+
+
+def test_general_layers_reproduce_the_perimeter_constructor():
+    unit = SOESIANAWATI_UNITS[1]
+    perimeter = unit_section(unit)
+    manual = RectangularSection(
+        perimeter.width_mm, perimeter.depth_mm, perimeter.clear_cover_mm,
+        tuple(reversed(tuple(BarLayer(l.depth_mm, l.count, l.diameter_mm) for l in perimeter.layers))),  # orden de entrada no importa
+        perimeter.transverse,
+    )
+    assert manual.layers == perimeter.layers
+    assert confinement_effectiveness(manual) == pytest.approx(confinement_effectiveness(perimeter), rel=1e-12)
+    assert [layer.count for layer in perimeter.layers] == [4, 2, 2, 4]
+
+
+def test_asymmetric_section_ideal_moment_matches_hand_calculation():
+    """P = 0: Mi ~ T (d - a/2) con T = As fy y a = T/(0.85 f'c b); el acero comprimido suma poco."""
+    model = _asymmetric_model()
+    steel_force = 3 * bar_area(25.0) * 420.0
+    a = steel_force / (0.85 * 28.0 * 300.0)
+    hand = steel_force * (437.5 - a / 2.0) / 1e6
+    assert ideal_flexural_strength(model, 0.0) / 1e6 == pytest.approx(hand, rel=0.02)
+
+
+def test_asymmetric_section_initial_stiffness_includes_axial_flexure_coupling():
+    """Con P = 0 y refuerzo asimétrico, M/phi = EI - EZ²/EA (el eje neutro se desplaza del centroide)."""
+    model = _asymmetric_model()
+    mesh = model.mesh
+    ec, es = model.core.elastic_modulus, model.steel.elastic_modulus
+    concrete_area = mesh.core_area + mesh.cover_area
+    ea = ec * concrete_area.sum() + es * mesh.bar_area.sum()
+    ez = ec * (concrete_area * mesh.y).sum() + es * (mesh.bar_area * mesh.bar_y).sum()
+    ei = ec * (concrete_area * mesh.y**2).sum() + es * (mesh.bar_area * mesh.bar_y**2).sum()
+    analysis = MomentCurvatureAnalysis(model, AnalysisSettings(axial_load_n=0.0))
+    phi = 2e-8
+    state = analysis.advance(analysis.initial_state(), phi)
+    assert state.moment / phi == pytest.approx(ei - ez**2 / ea, rel=1e-3)
+    assert state.axial_force == pytest.approx(0.0, abs=analysis.tolerance * 1.001)
+
+
+def test_asymmetric_section_runs_to_a_limit_state():
+    result = MomentCurvatureAnalysis(_asymmetric_model(), AnalysisSettings(axial_load_n=0.0)).run()
+    assert all(state.converged for state in result.states)
+    assert result.maximum.moment > result.ideal_moment  # endurecimiento del acero
+    assert result.yield_curvature is not None
+
+
+@pytest.mark.parametrize(
+    "layers",
+    [
+        (BarLayer(5.0, 2, 16.0), BarLayer(300.0, 2, 16.0)),  # capa superior fuera del estribo
+        (BarLayer(60.0, 2, 16.0), BarLayer(65.0, 2, 16.0)),  # capas que se traslapan
+        (BarLayer(60.0, 2, 16.0),),  # una sola capa
+        (BarLayer(60.0, 12, 25.0), BarLayer(300.0, 2, 25.0)),  # barras traslapadas en la capa
+    ],
+)
+def test_invalid_bar_layers_are_rejected(layers):
+    stirrup = TransverseReinforcement.from_legs(10.0, 100.0, 300.0, 2, 2)
+    with pytest.raises(ValueError):
+        RectangularSection(300.0, 360.0, 40.0, layers, stirrup)
+
+
+def test_invalid_bar_layer_values_are_rejected():
+    with pytest.raises(ValueError):
+        BarLayer(50.0, 1, 16.0)
+    with pytest.raises(ValueError):
+        BarLayer(50.0, 2, 0.0)
+
+
+# ---------------------------------------------------------------- dibujo de la sección
+
+def test_section_figure_draws_every_bar_stirrup_and_dimension():
+    from visualization.column_plots import section_figure
+
+    unit_section_1 = unit_section(SOESIANAWATI_UNITS[1])
+    figure = section_figure(unit_section_1, octagonal=True)
+    circles = [shape for shape in figure.layout.shapes if shape.type == "circle"]
+    assert len(circles) == unit_section_1.number_of_bars == 12
+    # las barras se dibujan con su diámetro real, dentro del contorno de la sección
+    radius = 16.0 / 2.0
+    assert all(abs((c.x1 - c.x0) / 2.0 - radius) < 1e-9 for c in circles)
+    assert all(0.0 < c.x0 and c.x1 < 400.0 and 0.0 < c.y0 and c.y1 < 400.0 for c in circles)
+    texts = " ".join(a.text for a in figure.layout.annotations if a.text)
+    for expected in ("b = 400", "h = 400", "b″ = 367", "d″ = 367", "4 Ø16", "2 Ø16", "recubrimiento libre r = 13"):
+        assert expected in texts
+
+    stirrup = TransverseReinforcement.from_legs(10.0, 100.0, 420.0, 4, 3)
+    beam = RectangularSection(300.0, 500.0, 40.0, (BarLayer(58.0, 2, 16.0), BarLayer(437.5, 3, 25.0)), stirrup)
+    drawing = section_figure(beam, legs_x=4, legs_y=3)
+    assert len([shape for shape in drawing.layout.shapes if shape.type == "circle"]) == 5
+    legend = [trace.name for trace in drawing.data if trace.name]
+    assert {"Núcleo confinado", "Barras longitudinales"} <= set(legend)

@@ -83,7 +83,7 @@ SOESIANAWATI_UNITS = {
 def unit_section(unit: ColumnUnit) -> RectangularSection:
     area = equivalent_octagonal_area_mm2(unit.stirrup_diameter_mm)
     transverse = TransverseReinforcement(unit.stirrup_diameter_mm, unit.stirrup_spacing_mm, unit.stirrup_yield_mpa, area, area)
-    return RectangularSection(
+    return RectangularSection.with_perimeter_bars(
         SECTION_SIZE_MM, SECTION_SIZE_MM, CLEAR_COVER_MM, BARS_PER_FACE, BARS_PER_FACE, LONGITUDINAL_DIAMETER_MM, transverse
     )
 
