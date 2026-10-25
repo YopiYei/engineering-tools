@@ -18,9 +18,9 @@ from calculations.structural.column_analysis import ColumnModel, MomentCurvature
 PHI_UNIT = 1e6  # 1/mm -> µrad/mm
 
 MARKERS = {
-    "cover_peak": ("#8c564b", "o"), "first_yield": ("#d62728", "D"), "code_strain": ("#7f7f7f", "s"),
+    "first_cracking": ("#17becf", "o"), "cover_peak": ("#8c564b", "o"), "first_yield": ("#d62728", "D"), "code_strain": ("#7f7f7f", "s"),
     "max_moment": ("#2ca02c", "*"), "core_peak": ("#9467bd", "o"), "steel_hardening": ("#ff7f0e", "^"),
-    "cover_spalling": ("#bcbd22", "v"), "core_ultimate": ("black", "X"), "hoop_fracture": ("black", "X"),
+    "cover_spalling": ("#bcbd22", "v"), "core_ultimate": ("black", "X"), "design_core_strain": ("black", "X"), "design_moment_drop": ("black", "X"), "hoop_fracture": ("black", "X"),
     "steel_ultimate": ("black", "X"), "ductility_limit": ("black", "X"), "moment_drop": ("black", "X"),
 }
 TERMINATION_COLORS = {"hoop_fracture": "#d62728", "steel_ultimate": "#1f77b4", "core_ultimate": "#2ca02c",
@@ -229,5 +229,41 @@ def variants_png(outcomes) -> PngImage:
         ax.set_xlim(left=0)
         ax.set_ylim(bottom=0)
     ax_a.legend(fontsize=8)
+    fig.tight_layout()
+    return _to_png(fig)
+
+
+def column_response_png(response, ultimate_key=None) -> PngImage:
+    """Izquierda: curva fuerza lateral–desplazamiento con estados límite. Derecha: componentes del desplazamiento."""
+    fig = Figure(figsize=(8.4, 4.2))
+    ax_v, ax_c = fig.add_subplot(121), fig.add_subplot(122)
+    ax_v.plot(response.displacement, response.shear_force / 1e3, color="#1f77b4", lw=2.2, label="V–Δ monotónica")
+    for record in response.result.limit_states:
+        if not record.reached or record.state is None:
+            continue
+        values = response.at_state(response.state_index(record.state))
+        color, marker = MARKERS.get(record.key, ("#333333", "o"))
+        ax_v.plot(values["displacement"], values["shear_force"] / 1e3, marker=marker, color=color, ms=8 if marker != "*" else 12,
+                  ls="none", markeredgecolor="white", label=record.label)
+    ultimate = response.ultimate(ultimate_key)
+    ideal_force = response.result.ideal_moment / response.column_length_mm / 1e3
+    ax_v.plot([0, response.yield_displacement, max(ultimate["displacement"], response.yield_displacement)],
+              [0, ideal_force, ideal_force], "--", color="gray", lw=1.2, label="Idealización elastoplástica")
+    ax_v.axvline(ultimate["displacement"], color="lightgray", ls=":")
+    ax_v.set(xlabel="Desplazamiento lateral, Δ (mm)", ylabel="Fuerza lateral, V = M/L (kN)",
+             title=f"Δu = {ultimate['displacement']:.1f} mm, μΔ = {ultimate['ductility']:.1f}")
+    ax_v.legend(fontsize=6.5, loc="lower right")
+    phi = response.curvature * PHI_UNIT
+    ax_c.plot(phi, response.elastic_displacement, color="#2ca02c", label="Flexión elástica Δe")
+    if response.data.include_shear:
+        ax_c.plot(phi, response.shear_displacement, color="#ff7f0e", label="Cortante Δs")
+    ax_c.plot(phi, response.plastic_displacement, color="#d62728", label="Plástico Δp")
+    ax_c.plot(phi, response.displacement, color="#1f77b4", lw=2.2, label="Total Δ")
+    ax_c.set(xlabel="Curvatura de la sección crítica, φ (µrad/mm)", ylabel="Desplazamiento (mm)", title="Componentes del desplazamiento")
+    ax_c.legend(fontsize=7.5)
+    for ax in (ax_v, ax_c):
+        ax.grid(alpha=0.3)
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
     fig.tight_layout()
     return _to_png(fig)

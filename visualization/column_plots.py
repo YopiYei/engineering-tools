@@ -16,6 +16,7 @@ MOMENT_UNIT = 1e6  # N*mm -> kN·m
 
 # Marcador de cada estado límite (color y símbolo); los terminales usan una X.
 LIMIT_STYLE = {
+    "first_cracking": ("#17becf", "circle"),
     "cover_peak": ("#8c564b", "circle"),
     "first_yield": ("#d62728", "diamond"),
     "code_strain": ("#7f7f7f", "square"),
@@ -24,6 +25,8 @@ LIMIT_STYLE = {
     "steel_hardening": ("#ff7f0e", "triangle-up"),
     "cover_spalling": ("#bcbd22", "triangle-down"),
     "core_ultimate": ("#000000", "x"),
+    "design_core_strain": ("#000000", "x"),
+    "design_moment_drop": ("#000000", "x"),
     "hoop_fracture": ("#000000", "x"),
     "steel_ultimate": ("#000000", "x"),
     "ductility_limit": ("#000000", "x"),
@@ -70,8 +73,11 @@ def moment_curvature_figure(result: MomentCurvatureResult, normalized: bool = Fa
     return _layout(fig, "Diagrama momento–curvatura", "Curvatura, φ (µrad/mm = 10⁻³ 1/m)", "Momento, M (kN·m)")
 
 
-def material_curves_figure(model: ColumnModel, concrete_strain_max: float | None = None) -> go.Figure:
-    """Curvas esfuerzo-deformación: concreto del recubrimiento y del núcleo (izquierda) y acero (derecha)."""
+def material_curves_figure(model: ColumnModel, concrete_strain_max: float | None = None, panel_curve=None) -> go.Figure:
+    """Curvas esfuerzo-deformación: concreto del recubrimiento y del núcleo (izquierda) y acero (derecha).
+
+    panel_curve: (deformaciones, esfuerzos, nombre) de la curva del panel «Concrete Stress-Strain», si se tomó de allí.
+    """
     if concrete_strain_max is None:
         concrete_strain_max = max(4.0 * model.core.peak_strain, 1.2 * model.cover.spall_strain, 0.015)
     fig = make_subplots(rows=1, cols=2, subplot_titles=("Concreto (compresión positiva)", "Acero longitudinal"))
@@ -80,6 +86,11 @@ def material_curves_figure(model: ColumnModel, concrete_strain_max: float | None
     core = model.core.stress_and_tangent(e)[0]
     fig.add_trace(go.Scatter(x=e, y=cover, name="Recubrimiento (no confinado)", line=dict(color="#8c564b", width=3)), 1, 1)
     fig.add_trace(go.Scatter(x=e, y=core, name="Núcleo confinado", line=dict(color="#1f77b4", width=3)), 1, 1)
+    if panel_curve is not None:
+        strain, stress, name = panel_curve
+        keep = np.asarray(strain) <= concrete_strain_max
+        fig.add_trace(go.Scatter(x=np.asarray(strain)[keep], y=np.asarray(stress)[keep], name=name,
+                                 line=dict(color="#7f7f7f", width=2, dash="dash")), 1, 1)
     for strain, stress, text, color in (
         (model.cover.peak_strain, model.cover.peak_stress, "f'co, εco", "#8c564b"),
         (model.core.peak_strain, model.core.peak_stress, "f'cc, εcc", "#1f77b4"),
@@ -373,3 +384,54 @@ def variants_figure(outcomes, normalized: bool = False) -> go.Figure:
     if normalized:
         return _layout(fig, "Curvas M–φ normalizadas", "Ductilidad de curvatura, φ/φy", "M / Mi")
     return _layout(fig, "Curvas M–φ de las configuraciones", "Curvatura, φ (µrad/mm = 10⁻³ 1/m)", "Momento, M (kN·m)")
+
+
+# =========================================================================================
+# Respuesta de la columna: fuerza lateral–desplazamiento
+# =========================================================================================
+
+
+def _reached_points(response):
+    """Estados límite alcanzados con su (desplazamiento, fuerza lateral): lista de (registro, Δ mm, V kN)."""
+    points = []
+    for record in response.result.limit_states:
+        if record.reached and record.state is not None:
+            values = response.at_state(response.state_index(record.state))
+            points.append((record, values["displacement"], values["shear_force"] / 1e3))
+    return points
+
+
+def force_displacement_figure(response, ultimate_key=None) -> go.Figure:
+    """Curva fuerza lateral–desplazamiento con los estados límite y la idealización elastoplástica equivalente."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=response.displacement, y=response.shear_force / 1e3, mode="lines", name="V–Δ monotónica",
+                             line=dict(color="#1f77b4", width=3)))
+    for record, displacement, force in _reached_points(response):
+        color, symbol = LIMIT_STYLE.get(record.key, ("#333333", "circle"))
+        fig.add_trace(go.Scatter(
+            x=[displacement], y=[force], mode="markers", name=record.label,
+            marker=dict(color=color, symbol=symbol, size=12, line=dict(width=1, color="white")),
+            hovertemplate=f"<b>{record.label}</b><br>Δ=%{{x:.1f}} mm, V=%{{y:.1f}} kN<br>μΔ={displacement / response.yield_displacement:.2f}<extra></extra>"))
+    ultimate = response.ultimate(ultimate_key)
+    ideal_force = response.result.ideal_moment / response.column_length_mm / 1e3
+    fig.add_trace(go.Scatter(
+        x=[0.0, response.yield_displacement, max(ultimate["displacement"], response.yield_displacement)], y=[0.0, ideal_force, ideal_force],
+        mode="lines+markers", name="Idealización elastoplástica (Δy, Mi/L)", line=dict(color="gray", dash="dash"),
+        marker=dict(size=[0, 9, 0], color="gray", symbol="diamond-open")))
+    fig.add_vline(x=ultimate["displacement"], line=dict(color="lightgray", dash="dot"),
+                  annotation_text=f"Δu = {ultimate['displacement']:.1f} mm (μΔ = {ultimate['ductility']:.1f})", annotation_position="top left")
+    return _layout(fig, "Curva fuerza lateral–desplazamiento de la columna", "Desplazamiento lateral, Δ (mm)", "Fuerza lateral, V = M/L (kN)")
+
+
+def displacement_components_figure(response) -> go.Figure:
+    """Aporte de la flexión elástica, el cortante y la rotación plástica al desplazamiento total."""
+    phi = response.curvature * PHI_UNIT
+    fig = go.Figure()
+    for values, name, color in ((response.elastic_displacement, "Flexión elástica, Δe", "#2ca02c"),
+                                (response.shear_displacement, "Cortante, Δs", "#ff7f0e"),
+                                (response.plastic_displacement, "Plástico, Δp", "#d62728"),
+                                (response.displacement, "Total, Δ", "#1f77b4")):
+        if name.startswith("Cortante") and not response.data.include_shear:
+            continue
+        fig.add_trace(go.Scatter(x=phi, y=values, mode="lines", name=name, line=dict(color=color, width=3 if name.startswith("Total") else 2)))
+    return _layout(fig, "Componentes del desplazamiento (Ec. 7.74)", "Curvatura de la sección crítica, φ (µrad/mm)", "Desplazamiento (mm)")

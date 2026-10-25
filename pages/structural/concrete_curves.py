@@ -11,6 +11,7 @@ from calculations.structural.concrete_properties import (
 )
 
 from styles.main import apply_global_styles, panel_intro
+from utils.shared_state import publish_concrete
 
 
 apply_global_styles()
@@ -148,6 +149,9 @@ if view_mode == "single":
             )
 
             show_formulas = st.checkbox("Show formulas", value=False, key="formulas_single")
+
+    # El panel COLUMN toma este f'c y estos modelos como datos del concreto (solo en la vista de un f'c)
+    publish_concrete(fc, compression_model, tension_model)
 
 elif view_mode == "comparison":
     col1, col2, col3 = st.columns([1, 1, 1.2])

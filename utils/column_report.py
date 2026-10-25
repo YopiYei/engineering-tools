@@ -17,6 +17,7 @@ from calculations.structural.column_analysis import MomentCurvatureResult
 from visualization.column_report_plots import (
     PHI_UNIT,
     PngImage,
+    column_response_png,
     interaction_png,
     materials_png,
     moment_curvature_png,
@@ -141,12 +142,13 @@ def _num(value, decimals=2, thousands=True):
     return f"{value:,.{decimals}f}" if thousands else f"{value:.{decimals}f}"
 
 
-def build_column_report(result: MomentCurvatureResult, arrangement=None, interaction=None, variants=None, title="", author="") -> ReportDocument:
+def build_column_report(result: MomentCurvatureResult, arrangement=None, interaction=None, variants=None, title="", author="", column=None) -> ReportDocument:
     """Arma el informe.
 
     arrangement: dict con 'octagonal', 'legs_x', 'legs_y' y 'description' (cómo se dibuja y describe el estribo).
     interaction: dict con 'curve' (CodeInteractionCurve), 'points' (lista de InteractionPoint) y 'current_axial_kn'.
     variants:    lista de VariantResult de la comparación de configuraciones.
+    column:      dict con 'response' (ColumnResponse) y 'ultimate_key' (estado que define la curvatura última, None = final).
     """
     arrangement = arrangement or {}
     model, settings = result.model, result.settings
@@ -210,6 +212,7 @@ def build_column_report(result: MomentCurvatureResult, arrangement=None, interac
             f"εcu del núcleo = {settings.core_ultimate_strain:g}" if settings.core_ultimate_strain else "",
             f"φ/φy ≤ {settings.max_curvature_ductility:g}" if settings.max_curvature_ductility else "",
             f"M ≥ {settings.moment_drop_ratio:.0%} de Mmax" if settings.moment_drop_ratio else "",
+            "curvatura última de diseño de Mander (§7.4.3)" if settings.use_design_ultimate else "",
             "εsu del acero"]))],
         ["Tolerancia de equilibrio axial", f"{settings.equilibrium_tolerance:g} de f'co·Ag"],
     ], widths=[3, 1.4]))
@@ -244,12 +247,46 @@ def build_column_report(result: MomentCurvatureResult, arrangement=None, interac
     doc.add(Bullets([plain(line) for line in interpretation_lines(result)]))
 
     section_number = 4
+    figure_number = 3
+    if column is not None:
+        response, ultimate_key = column["response"], column.get("ultimate_key")
+        ultimate = response.ultimate(ultimate_key)
+        ultimate_label = next((r.label for r in result.limit_states if r.key == ultimate_key), f"final del análisis ({result.termination_message})")
+        doc.add(Heading(f"{section_number}. De la sección a la columna: rótula plástica y curva fuerza–desplazamiento"))
+        doc.add(Paragraph(
+            "La columna se idealiza como un voladizo de longitud L desde la sección crítica hasta el punto de inflexión (V = M/L). "
+            "El desplazamiento es Δ = Δe + Δs + Δp (Mander, 1984, Ec. 7.74) con la rotación plástica en una rótula de longitud equivalente "
+            "Lp = Lpy + 0.06 L (Ec. 7.71–7.72)."))
+        data = response.data
+        doc.add(Table(["Parámetro", "Valor"], [
+            ["Longitud L (mm)", _num(response.column_length_mm, 0)],
+            ["Penetración de fluencia Lpy (mm) / longitud de rótula Lp (mm)", f"{response.yield_penetration_mm:.1f} / {response.plastic_hinge_length_mm:.1f}"],
+            ["Deformación por cortante", "incluida" if data.include_shear else "no incluida"],
+            ["Rigidez efectiva EI (MN·m²), Ec. 7.76", _num(response.effective_stiffness / 1e12, 1)],
+            ["Desplazamiento de primera fluencia Δ'y (mm)", _num(response.first_yield_displacement, 2)],
+            ["Desplazamiento de fluencia Δy = Δ'y·Mi/My (mm), Ec. 7.91", _num(response.yield_displacement, 2)],
+            ["Fuerza lateral ideal Mi/L (kN)", _num(result.ideal_moment / response.column_length_mm / 1e3, 1)],
+            [f"Estado último considerado", ultimate_label],
+            ["Curvatura última φu (µrad/mm)", _num(ultimate["curvature"] * PHI_UNIT, 1)],
+            ["Desplazamiento último Δu (mm) / deriva", f"{ultimate['displacement']:,.1f} / {ultimate['displacement'] / response.column_length_mm:.2%}"],
+            ["Ductilidad de desplazamiento μΔ = Δu/Δy", _num(ultimate["ductility"], 2)],
+            ["Rotación plástica θp (rad), Ec. 7.87", _num(ultimate["plastic_rotation"], 4)],
+            ["Rotación plástica de diseño Lp(φu − φy) (rad), Ec. 7.67", _num(ultimate["design_plastic_rotation"], 4)],
+            ["Fuerza lateral en el estado último V (kN) / máxima (kN)", f"{ultimate['shear_force'] / 1e3:,.1f} / {response.shear_force.max() / 1e3:,.1f}"],
+        ], widths=[3.4, 2.2]))
+        figure_number += 1
+        doc.add(Picture(column_response_png(response, ultimate_key),
+                        f"Figura {figure_number}. Izquierda: curva fuerza lateral–desplazamiento con los estados límite y la idealización elastoplástica. "
+                        "Derecha: componentes del desplazamiento.", width_cm=16.0))
+        section_number += 1
+
     if interaction is not None and interaction.get("points"):
         from calculations.structural.column_interaction import interaction_dataframe
 
         doc.add(Heading(f"{section_number}. Diagrama de interacción P–M y ductilidad vs. carga axial"))
+        figure_number += 1
         doc.add(Picture(interaction_png(model, interaction["curve"], interaction["points"], interaction.get("current_axial_kn")),
-                        "Figura 4. Izquierda: curva ideal (método de la norma) y momento máximo del análisis para cada carga axial. "
+                        f"Figura {figure_number}. Izquierda: curva ideal (método de la norma) y momento máximo del análisis para cada carga axial. "
                         "Derecha: ductilidad de curvatura al terminar el análisis.", width_cm=16.0))
         curve = interaction["curve"]
         doc.add(Table(["Punto notable (método de la norma)", "P (kN)", "M (kN·m)"], [
@@ -270,7 +307,8 @@ def build_column_report(result: MomentCurvatureResult, arrangement=None, interac
         from calculations.structural.column_variants import variants_dataframe
 
         doc.add(Heading(f"{section_number}. Comparación de configuraciones"))
-        doc.add(Picture(variants_png(variants), "Figura 5. Curvas M–φ de las configuraciones comparadas.", width_cm=16.0))
+        figure_number += 1
+        doc.add(Picture(variants_png(variants), f"Figura {figure_number}. Curvas M–φ de las configuraciones comparadas.", width_cm=16.0))
         frame = variants_dataframe(variants)
         doc.add(Table(["Configuración", "s (mm)", "Ø est. (mm)", "P (kN)", "f'cc (MPa)", "Mmax (kN·m)", "φy (µrad/mm)", "μφ", "Termina por"], [
             [r.name, _num(getattr(r, "spacing_mm", None), 0), _num(getattr(r, "stirrup_diameter_mm", None), 1),

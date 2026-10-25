@@ -20,6 +20,7 @@ from utils.aisc_data import (
 )
 
 from styles.main import apply_global_styles, panel_intro
+from utils.shared_state import UNITS_TO_MM, clear_rectangle, publish_rectangle
 
 
 apply_global_styles()
@@ -111,8 +112,18 @@ if input_mode == "Custom Dimensions":
                     value=20.0,
                 )
 
+            # Unidad de b y h: no cambia el cálculo; el panel COLUMN la usa para tomar esta geometría
+            dimension_unit = st.selectbox(
+                "Units of b and h (used to share this rectangle with the COLUMN panel)",
+                options=list(UNITS_TO_MM),
+                index=list(UNITS_TO_MM).index("cm"),
+            )
+            publish_rectangle(width, height, dimension_unit)
+
 
         elif section_type == "Circle":
+
+            clear_rectangle()
 
             radius = st.number_input(
                 "Radius, r",
@@ -122,6 +133,8 @@ if input_mode == "Custom Dimensions":
 
 
         elif section_type == "I / W Section":
+
+            clear_rectangle()
 
             col1, col2 = st.columns(2)
 
@@ -548,6 +561,8 @@ if input_mode == "Custom Dimensions":
 # ===========================================================
 
 else:
+
+    clear_rectangle()
 
     # ---------------------------------------------------------
     # 2. Shape selection

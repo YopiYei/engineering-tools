@@ -120,6 +120,8 @@ class AnalysisSettings:
                        perimetral resiste todo el trabajo.
     max_curvature_ductility: termina cuando phi/phi_y lo alcanza; None lo desactiva.
     moment_drop_ratio: termina cuando M cae a esta fracción de Mmax; None lo desactiva.
+    use_design_ultimate: termina con el criterio de curvatura última de diseño de Mander (§7.4.3):
+                       eps_max = eps_spall + 0.04 (K - 1) en el núcleo (Ec. 7.70), o M = 0.8 Mi tras superar Mi.
     equilibrium_tolerance: tolerancia de |N - P| como fracción de f'co Ag (COLUMN usa 5e-4).
     """
 
@@ -134,6 +136,7 @@ class AnalysisSettings:
     work_fraction_steel: float = 1.0
     max_curvature_ductility: float | None = None
     moment_drop_ratio: float | None = None
+    use_design_ultimate: bool = False
     equilibrium_tolerance: float = 1e-5
     max_iterations: int = 15
     max_steps: int = 3000
@@ -450,7 +453,7 @@ class MomentCurvatureAnalysis:
         return self._make_state(phi, eps0, integration, iterations, imbalance, converged, previous, previous.history)
 
     # ----- estados límite -----
-    def limit_states(self, ideal_yield_ductility_limit=None) -> list:
+    def limit_states(self, ideal_yield_ductility_limit=None, ideal_moment=None) -> list:
         """Lista de estados límite/eventos con su criterio explícito."""
         m, s = self.model, self.settings
         section = m.section
@@ -464,7 +467,12 @@ class MomentCurvatureAnalysis:
         def tension_bar(st): return -(st.eps0 + st.phi * y_tension)
         def bar_magnitude(st): return max(abs(st.eps0 + st.phi * y_tension), abs(st.eps0 + st.phi * y_comp))
 
+        def bottom_tension(st): return -(st.eps0 - st.phi * half_depth)
+
         states = [
+            LimitState("first_cracking", "Fisuración por flexión",
+                       "La fibra extrema traccionada del concreto alcanza f't/Ec (o se descomprime si f't = 0).", False,
+                       lambda st: bottom_tension(st) - m.cover.cracking_strain - 1e-12),
             LimitState("first_yield", "Primera fluencia del acero",
                        "La barra más traccionada alcanza ey = fy/Es.", False, lambda st: tension_bar(st) - steel.yield_strain),
             LimitState("code_strain", "Deformación 0.003 en la fibra extrema",
@@ -491,6 +499,16 @@ class MomentCurvatureAnalysis:
                                      "El trabajo hecho sobre el núcleo y las barras comprimidas supera la energía de "
                                      "deformación del estribo crítico (Ec. 7.61-7.66).", True,
                                      lambda st: st.core_work - self.hoop_energy_capacity))
+        if s.use_design_ultimate and ideal_moment is not None:
+            confinement_ratio = m.core.peak_stress / m.concrete.unconfined_strength  # K = f'cc/f'c (Ec. 7.68)
+            design_strain = m.concrete.spall_strain + 0.04 * (confinement_ratio - 1.0)  # Ec. 7.70
+            states.append(LimitState("design_core_strain", "Curvatura última de diseño: εmax del núcleo",
+                                     f"La fibra extrema del núcleo alcanza εmax = εspall + 0.04(K − 1) = {design_strain:.4f}, con "
+                                     f"K = f'cc/f'c = {confinement_ratio:.2f} (Mander §7.4.3, Ec. 7.70).", True,
+                                     lambda st: core_edge(st) - design_strain))
+            states.append(LimitState("design_moment_drop", "Curvatura última de diseño: M = 0.8 Mi",
+                                     "Después de superar Mi, el momento cae a 0.8 Mi (Mander §7.4.3).", True,
+                                     lambda st: 0.8 * ideal_moment - st.moment if st.max_moment > ideal_moment else -1.0))
         states.append(LimitState("steel_ultimate", "Deformación última del acero",
                                  "La barra más deformada alcanza esu.", True, lambda st: bar_magnitude(st) - steel.ultimate_strain))
         if s.max_curvature_ductility is not None and ideal_yield_ductility_limit is not None:
@@ -595,7 +613,7 @@ class MomentCurvatureAnalysis:
         elif self.settings.max_curvature_ductility is not None:
             warnings.append("El límite de ductilidad no se aplicó porque phi_y no está definida.")
 
-        limits = self.limit_states(duct_limit)
+        limits = self.limit_states(duct_limit, ideal)
         states, reached, (term_key, term_label), march_warnings = self._march(scale, limits)
         warnings.extend(march_warnings)
 
