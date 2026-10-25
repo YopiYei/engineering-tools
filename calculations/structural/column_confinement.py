@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from math import sqrt
 
 import numpy as np
-from scipy.optimize import brentq
 
 from calculations.structural.column_section import RectangularSection
+from calculations.structural.root_finding import bisect
 
 STRAIN_RATIO_R = 5.0  # R = k2/k1 supuesto en la tesis (Ec. 3.32)
 
@@ -98,7 +98,7 @@ def confined_concrete_strength(unconfined_strength: float, lateral_stress_x: flo
     """Resistencia confinada f'cc [MPa] por el procedimiento de 6 pasos (§3.4.5.1).
 
     En vez de iterar a punto fijo (paso 6) se resuelve sigma_3 = g(sigma_3) con
-    un método de bisección robusto (brentq); la solución es la misma.
+    bisección; la solución es la misma.
     """
     fco = unconfined_strength
     if fco <= 0 or lateral_stress_x < 0 or lateral_stress_y < 0:
@@ -125,7 +125,7 @@ def confined_concrete_strength(unconfined_strength: float, lateral_stress_x: flo
     values = np.array([safe_residual(x) for x in grid])
     for i in range(len(grid) - 1):
         if np.isfinite(values[i]) and np.isfinite(values[i + 1]) and values[i] * values[i + 1] <= 0.0:
-            return -brentq(residual, grid[i], grid[i + 1], xtol=1e-10)
+            return -bisect(residual, grid[i], grid[i + 1], xtol=1e-10)
     raise ValueError("No se encontró la resistencia confinada: revise los esfuerzos de confinamiento.")
 
 

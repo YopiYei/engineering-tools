@@ -365,3 +365,15 @@ def test_axial_load_above_capacity_is_rejected():
 def test_invalid_analysis_settings_are_rejected(kwargs):
     with pytest.raises(ValueError):
         AnalysisSettings(**kwargs)
+
+
+# ---------------------------------------------------------------- búsqueda de raíces
+
+def test_bisect_accepts_descending_interval_and_rejects_no_sign_change():
+    from calculations.structural.root_finding import bisect, maximize_bounded
+
+    assert bisect(lambda x: x**3 - 2.0, 3.0, 0.0, xtol=1e-12) == pytest.approx(2.0 ** (1.0 / 3.0), abs=1e-10)
+    assert bisect(lambda x: x**3 - 2.0, 0.0, 3.0, xtol=1e-12) == pytest.approx(2.0 ** (1.0 / 3.0), abs=1e-10)
+    with pytest.raises(ValueError):
+        bisect(lambda x: x**2 + 1.0, -1.0, 1.0)
+    assert maximize_bounded(lambda x: -(x - 0.7) ** 2, 0.0, 2.0, xtol=1e-10) == pytest.approx(0.7, abs=1e-7)

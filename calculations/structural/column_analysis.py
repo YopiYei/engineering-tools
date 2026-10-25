@@ -28,11 +28,10 @@ from dataclasses import dataclass, field, replace
 from typing import Callable
 
 import numpy as np
-from scipy.optimize import brentq, minimize_scalar
-
 from calculations.structural.column_confinement import ConfinementResult, confine_rectangular_core
 from calculations.structural.column_materials import PopovicsConcrete, ReinforcingSteel
 from calculations.structural.column_section import RectangularSection, SectionMesh, build_mesh
+from calculations.structural.root_finding import bisect, maximize_bounded
 
 # --- Constantes tomadas de la tesis / del listado de COLUMN -------------------------------
 CODE_ULTIMATE_STRAIN = 0.003  # deformación del concreto para la resistencia ideal Mi (sección 7.4.2)
@@ -393,7 +392,7 @@ class MomentCurvatureAnalysis:
         if len(crossings) == 0:
             return None
         nearest = crossings[np.argmin(np.abs(grid[crossings] - eps0_guess))]
-        return brentq(lambda e: _integrate(self.model, e, phi, history)[0] - self.axial_load, grid[nearest], grid[nearest + 1], xtol=1e-14)
+        return bisect(lambda e: _integrate(self.model, e, phi, history)[0] - self.axial_load, grid[nearest], grid[nearest + 1], xtol=1e-14)
 
     def _make_state(self, phi, eps0, integration, iterations, imbalance, converged, previous: SectionState | None, history_in):
         axial, moment, ea, ez, eps, sigma_core, eps_bars, sigma_bars = integration
@@ -519,7 +518,7 @@ class MomentCurvatureAnalysis:
         """Ubica por bisección la curvatura en que `limit` ocurre exactamente entre dos pasos."""
         def g(phi):
             return limit.measure(self.advance(previous, phi))
-        phi = brentq(g, previous.phi, current.phi, xtol=1e-14 * max(1.0, abs(current.phi)), rtol=1e-12)
+        phi = bisect(g, previous.phi, current.phi, xtol=1e-14)
         return self.advance(previous, phi)
 
     def _march(self, phi_y, limits, stop_key=None):
@@ -624,9 +623,8 @@ class MomentCurvatureAnalysis:
         k = int(np.argmax([st.moment for st in states]))
         if 0 < k < len(states) - 1:
             start, lo, hi = states[k - 1], states[k - 1].phi, states[k + 1].phi
-            result = minimize_scalar(lambda p: -self.advance(start, p).moment, bounds=(lo, hi), method="bounded",
-                                     options={"xatol": 1e-12})
-            best = self.advance(start, float(result.x))
+            phi_max = maximize_bounded(lambda p: self.advance(start, p).moment, lo, hi, xtol=1e-12)
+            best = self.advance(start, phi_max)
             if best.converged and best.moment > states[k].moment:
                 return sorted(states + [best], key=lambda st: st.phi), best
         return states, states[k]
@@ -668,7 +666,7 @@ def ideal_flexural_strength(model: ColumnModel, axial_load_n: float, concrete_st
     f_lo, f_hi = forces(lo)[0] - axial_load_n, forces(hi)[0] - axial_load_n
     if f_lo * f_hi > 0:
         raise ValueError("No se pudo calcular la resistencia ideal con la carga axial dada.")
-    c = brentq(lambda x: forces(x)[0] - axial_load_n, lo, hi, xtol=1e-9)
+    c = bisect(lambda x: forces(x)[0] - axial_load_n, lo, hi, xtol=1e-9)
     return forces(c)[1]
 
 
