@@ -56,10 +56,19 @@ calculations/structural/column_section.py        geometría, barras, estribos y 
 calculations/structural/column_confinement.py    ke, f'cc (procedimiento de 6 pasos), ecc
 calculations/structural/column_analysis.py       algoritmo de §7.4.2, Mi, phi_y, estados límite
 calculations/structural/column_examples.py       Unidades 1-4 de Soesianawati (ejemplo y validación)
-visualization/column_plots.py                    gráficos de Plotly
+calculations/structural/column_interaction.py    diagrama P-M (ideal y del análisis) y ductilidad vs. carga axial
+calculations/structural/column_variants.py       comparación de configuraciones (estribos, P, f'co)
+calculations/structural/root_finding.py          bisección y búsqueda áurea (sin SciPy)
+utils/column_report.py                           informe en Word (python-docx) y PDF (fpdf2)
+visualization/column_plots.py                    gráficos de Plotly (incluye el corte acotado de la sección)
+visualization/column_report_plots.py             figuras PNG (matplotlib) para el informe
 pages/structural/column_mphi.py                  interfaz
-tests/test_column_mphi.py                        pruebas y validación con datos publicados
+tests/test_column_mphi.py, test_column_extras.py pruebas y validación con datos publicados
 ```
+
+El panel incluye, además del análisis principal: la tabla editable de capas de barras con el corte de la sección,
+el **diagrama de interacción P–M** y la **ductilidad vs. carga axial**, la **comparación de configuraciones** y la
+descarga de un **informe Word/PDF**. Las librerías `python-docx` y `fpdf2` solo se necesitan para el informe.
 
 Convenciones: compresión positiva; N, mm, MPa; curvatura en µrad/mm en la interfaz (1/mm internamente).
 Las pruebas comparan con Soesianawati (1986), Tablas 5.1 y 8.3, con el ejemplo numérico de Mander (p. 65)

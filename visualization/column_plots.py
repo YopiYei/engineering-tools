@@ -289,3 +289,87 @@ def section_figure(section, octagonal: bool = False, legs_x: int = 2, legs_y: in
                             f"As = {section.steel_area_mm2:,.0f} mm² (ρ = {steel_ratio:.2%})",
                       legend=dict(orientation="h", y=-0.02, yanchor="top"), margin=dict(l=10, r=10, t=60, b=10))
     return fig
+
+
+# =========================================================================================
+# Interacción P–M, ductilidad vs. carga axial y comparación de configuraciones
+# =========================================================================================
+
+TERMINATION_COLORS = {
+    "hoop_fracture": "#d62728",
+    "steel_ultimate": "#1f77b4",
+    "core_ultimate": "#2ca02c",
+    "ductility_limit": "#9467bd",
+    "moment_drop": "#ff7f0e",
+    "no_convergence": "#7f7f7f",
+}
+
+
+def interaction_figure(model: ColumnModel, curve, points, current_axial_kn=None) -> go.Figure:
+    """Diagrama N–M: curva ideal (método de la norma), puntos notables y Mmax del análisis completo."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=curve.moment_knm, y=curve.axial_kn, mode="lines", name="Ideal (método de la norma)",
+                             line=dict(color="#1f77b4", width=3)))
+    for name, point, symbol in (("Tracción pura", curve.tension_point, "triangle-down"),
+                                ("Punto balanceado", curve.balanced_point, "diamond"),
+                                ("Compresión pura", curve.compression_point, "triangle-up")):
+        fig.add_trace(go.Scatter(x=[point[1]], y=[point[0]], mode="markers+text", text=[name], textposition="middle right",
+                                 marker=dict(color="#d62728", symbol=symbol, size=11), name=name, showlegend=False,
+                                 hovertemplate=f"<b>{name}</b><br>P = %{{y:,.0f}} kN<br>M = %{{x:,.1f}} kN·m<extra></extra>"))
+    converged = [p for p in points if p.max_moment is not None and p.termination_key != "no_convergence"]
+    unconverged = [p for p in points if p.max_moment is not None and p.termination_key == "no_convergence"]
+    if converged:
+        fig.add_trace(go.Scatter(x=[p.max_moment / 1e6 for p in converged], y=[p.axial_load_n / 1e3 for p in converged],
+                                 mode="lines+markers", name="Mmax del análisis (COLUMN)", line=dict(color="#2ca02c", width=2),
+                                 marker=dict(size=8)))
+    if unconverged:
+        fig.add_trace(go.Scatter(x=[p.max_moment / 1e6 for p in unconverged], y=[p.axial_load_n / 1e3 for p in unconverged],
+                                 mode="markers", name="Sin convergencia completa (cerca de la capacidad axial)",
+                                 marker=dict(size=9, symbol="circle-open", color="#7f7f7f", line=dict(width=2))))
+    if current_axial_kn is not None:
+        fig.add_hline(y=current_axial_kn, line=dict(color="gray", dash="dot"), annotation_text="P del análisis", annotation_position="top right")
+    return _layout(fig, "Diagrama de interacción P–M", "Momento, M (kN·m)", "Carga axial, P (kN)", height=520)
+
+
+def ductility_figure(model: ColumnModel, points) -> go.Figure:
+    """Ductilidad de curvatura al terminar el análisis en función de P/(f'co·Ag), coloreada por el criterio que termina."""
+    gross = model.concrete.unconfined_strength * model.section.gross_area_mm2
+    valid = [p for p in points if p.ductility is not None]
+    fig = go.Figure()
+    if valid:
+        fig.add_trace(go.Scatter(x=[p.axial_load_n / gross for p in valid], y=[p.ductility for p in valid], mode="lines",
+                                 line=dict(color="lightgray", width=1.5), showlegend=False, hoverinfo="skip"))
+    shown = set()
+    for p in valid:
+        color = TERMINATION_COLORS.get(p.termination_key, "#333333")
+        fig.add_trace(go.Scatter(
+            x=[p.axial_load_n / gross], y=[p.ductility], mode="markers", name=p.termination_label, legendgroup=p.termination_label,
+            showlegend=p.termination_label not in shown, marker=dict(color=color, size=10),
+            hovertemplate=(f"P = {p.axial_load_n / 1e3:,.0f} kN<br>P/(f'co·Ag) = %{{x:.3f}}<br>μφ = %{{y:.1f}}<br>"
+                           f"φy = {p.yield_curvature * PHI_UNIT:.2f} µrad/mm<br>{p.termination_label}<extra></extra>")))
+        shown.add(p.termination_label)
+    missing = [p for p in points if p.ductility is None and p.max_moment is not None]
+    if missing:
+        fig.add_trace(go.Scatter(x=[p.axial_load_n / gross for p in missing], y=[0.0] * len(missing), mode="markers",
+                                 name="φy no definida (el acero no fluye)", marker=dict(color="#7f7f7f", symbol="x", size=10)))
+    fig.update_layout(legend_title_text="Termina por")
+    return _layout(fig, "Ductilidad de curvatura vs. carga axial", "P / (f'co·Ag)", "Ductilidad, μφ = φu/φy", height=480)
+
+
+def variants_figure(outcomes, normalized: bool = False) -> go.Figure:
+    """Curvas M–φ de las configuraciones comparadas, absolutas o normalizadas (φ/φy, M/Mi)."""
+    fig = go.Figure()
+    for outcome in outcomes:
+        if outcome.result is None:
+            continue
+        result = outcome.result
+        if normalized:
+            if not result.yield_curvature:
+                continue
+            x, y = result.curvature / result.yield_curvature, result.moment / result.ideal_moment
+        else:
+            x, y = result.curvature * PHI_UNIT, result.moment / MOMENT_UNIT
+        fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name=outcome.variant.name, line=dict(width=2.5)))
+    if normalized:
+        return _layout(fig, "Curvas M–φ normalizadas", "Ductilidad de curvatura, φ/φy", "M / Mi")
+    return _layout(fig, "Curvas M–φ de las configuraciones", "Curvatura, φ (µrad/mm = 10⁻³ 1/m)", "Momento, M (kN·m)")

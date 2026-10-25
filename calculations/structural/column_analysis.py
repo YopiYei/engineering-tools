@@ -635,14 +635,14 @@ class MomentCurvatureAnalysis:
 # =========================================================================================
 
 
-def ideal_flexural_strength(model: ColumnModel, axial_load_n: float, concrete_strength: float | None = None) -> float:
-    """Momento ideal Mi [N*mm] con el método de diseño que usa COLUMN (modo 1 del listado).
+def code_forces(model: ColumnModel, neutral_axis_depth: float, concrete_strength: float | None = None):
+    """Fuerza axial N [N] y momento M [N*mm] del método de la norma para una profundidad de eje neutro c.
 
     Deformación 0.003 en la fibra extrema, bloque rectangular 0.85 f'c de profundidad
     a = beta1 c con beta1 = 0.85 - 0.008 (f'c - 30) acotado a [0.65, 0.85] (listado, línea
     "BETAI"), acero elastoplástico con Es = 200000 MPa y área de concreto neta de barras.
-    El momento es respecto a la mitad del peralte. `concrete_strength` permite usar una
-    f'c distinta de f'co del modelo (p. ej. la resistencia de cilindros el día del ensayo).
+    El momento es respecto a la mitad del peralte. `concrete_strength` permite usar una f'c
+    distinta de f'co del modelo (p. ej. la resistencia de cilindros el día del ensayo).
     """
     section, steel = model.section, model.steel
     fc = model.concrete.unconfined_strength if concrete_strength is None else concrete_strength
@@ -651,23 +651,31 @@ def ideal_flexural_strength(model: ColumnModel, axial_load_n: float, concrete_st
     bar_y, _, layer_area = section.bar_layers()
     depth_from_top = h / 2.0 - bar_y
 
-    def forces(c):
-        a = min(beta1 * c, h)
-        in_block = depth_from_top <= a
-        steel_strain = CODE_ULTIMATE_STRAIN * (c - depth_from_top) / c
-        steel_stress = np.clip(CODE_STEEL_MODULUS * steel_strain, -steel.yield_stress, steel.yield_stress)
-        concrete = 0.85 * fc * (b * a - layer_area[in_block].sum())
-        axial = concrete + (steel_stress * layer_area).sum()
-        moment = 0.85 * fc * (b * a * (h / 2.0 - a / 2.0) - (layer_area[in_block] * bar_y[in_block]).sum())
-        moment += (steel_stress * layer_area * bar_y).sum()
-        return axial, moment
+    c = neutral_axis_depth
+    a = min(beta1 * c, h)
+    in_block = depth_from_top <= a
+    steel_strain = CODE_ULTIMATE_STRAIN * (c - depth_from_top) / c
+    steel_stress = np.clip(CODE_STEEL_MODULUS * steel_strain, -steel.yield_stress, steel.yield_stress)
+    concrete = 0.85 * fc * (b * a - layer_area[in_block].sum())
+    axial = concrete + (steel_stress * layer_area).sum()
+    moment = 0.85 * fc * (b * a * (h / 2.0 - a / 2.0) - (layer_area[in_block] * bar_y[in_block]).sum())
+    moment += (steel_stress * layer_area * bar_y).sum()
+    return axial, moment
 
+
+def ideal_flexural_strength(model: ColumnModel, axial_load_n: float, concrete_strength: float | None = None) -> float:
+    """Momento ideal Mi [N*mm] con el método de diseño que usa COLUMN (modo 1 del listado).
+
+    Resuelve la profundidad del eje neutro que equilibra `axial_load_n` y evalúa `code_forces`.
+    """
+    h = model.section.depth_mm
     lo, hi = 1e-3 * h, 50.0 * h
-    f_lo, f_hi = forces(lo)[0] - axial_load_n, forces(hi)[0] - axial_load_n
+    f_lo = code_forces(model, lo, concrete_strength)[0] - axial_load_n
+    f_hi = code_forces(model, hi, concrete_strength)[0] - axial_load_n
     if f_lo * f_hi > 0:
         raise ValueError("No se pudo calcular la resistencia ideal con la carga axial dada.")
-    c = bisect(lambda x: forces(x)[0] - axial_load_n, lo, hi, xtol=1e-9)
-    return forces(c)[1]
+    c = bisect(lambda x: code_forces(model, x, concrete_strength)[0] - axial_load_n, lo, hi, xtol=1e-9)
+    return code_forces(model, c, concrete_strength)[1]
 
 
 def strain_profile(result: MomentCurvatureResult, index: int):

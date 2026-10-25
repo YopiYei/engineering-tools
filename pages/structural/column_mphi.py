@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import replace
 
 import numpy as np
@@ -12,6 +13,12 @@ from calculations.structural.column_analysis import (
     ideal_flexural_strength,
 )
 from calculations.structural.column_confinement import ConfinementResult, confine_rectangular_core
+from calculations.structural.column_interaction import (
+    analysis_interaction,
+    code_interaction_curve,
+    default_axial_range,
+    interaction_dataframe,
+)
 from calculations.structural.column_examples import (
     HD16_STEEL,
     SECTION_SIZE_MM,
@@ -26,26 +33,64 @@ from calculations.structural.column_section import (
     TransverseReinforcement,
     equivalent_octagonal_area_mm2,
 )
+from calculations.structural.column_variants import Variant, run_variants, variants_dataframe
 from styles.main import apply_global_styles
+from utils.column_report import build_column_report, interpretation_lines, write_docx, write_pdf
 from visualization.column_plots import (
     PHI_UNIT,
     convergence_figure,
+    ductility_figure,
+    interaction_figure,
     material_curves_figure,
     moment_curvature_figure,
     neutral_axis_figure,
     section_figure,
     strain_evolution_figure,
     strain_profile_figure,
+    variants_figure,
 )
 
 
 apply_global_styles()
 
 RESULT_KEY = "column_mphi_result"
+INTERACTION_KEY = "column_mphi_interaction"
+VARIANTS_KEY = "column_mphi_variants"
+REPORT_KEY = "column_mphi_report"
 OWN_DATA = "Datos propios (parten de los de la Unidad 1)"
 EXAMPLES = {f"Ejemplo — Soesianawati (1986), {unit.name}": number for number, unit in SOESIANAWATI_UNITS.items()}
 EXAMPLES[OWN_DATA] = None
 
+INTERACTION_LABELS = {
+    "axial_kN": "P (kN)",
+    "axial_ratio": "P/(f'co·Ag)",
+    "Mi_kNm": "Mi (kN·m)",
+    "Mmax_kNm": "Mmax (kN·m)",
+    "curvature_at_Mmax_urad_per_mm": "φ en Mmax (µrad/mm)",
+    "phi_y_urad_per_mm": "φy (µrad/mm)",
+    "phi_u_urad_per_mm": "φu (µrad/mm)",
+    "ductility": "μφ = φu/φy",
+    "termination": "Termina por",
+    "error": "Error",
+}
+VARIANT_LABELS = {
+    "name": "Configuración",
+    "spacing_mm": "s (mm)",
+    "stirrup_diameter_mm": "Ø estribo (mm)",
+    "stirrup_fy_mpa": "fyh (MPa)",
+    "axial_kN": "P (kN)",
+    "fco_mpa": "f'co (MPa)",
+    "ke": "ke",
+    "fcc_mpa": "f'cc (MPa)",
+    "ecc": "εcc",
+    "Mi_kNm": "Mi (kN·m)",
+    "Mmax_kNm": "Mmax (kN·m)",
+    "phi_y_urad_per_mm": "φy (µrad/mm)",
+    "phi_u_urad_per_mm": "φu (µrad/mm)",
+    "ductility": "μφ",
+    "termination": "Termina por",
+    "error": "Error",
+}
 TABLE_LABELS = {
     "step": "Incremento",
     "curvature_urad_per_mm": "Curvatura φ (µrad/mm)",
@@ -452,6 +497,13 @@ with st.container(border=True):
                     "result": MomentCurvatureAnalysis(model, settings).run(),
                     "inputs": inputs,
                     "example": example_number,
+                    "run_id": uuid.uuid4().hex,
+                    "arrangement": {
+                        "octagonal": arrangement.startswith("Cuadrado"),
+                        "legs_x": int(legs_x),
+                        "legs_y": int(legs_y),
+                        "description": arrangement,
+                    },
                 }
         except ValueError as error:
             st.session_state.pop(RESULT_KEY, None)
@@ -578,48 +630,199 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.subheader("7. Interpretación de resultados")
-    lines = []
-    ratio = maximum.moment / result.ideal_moment
-    if ratio >= 1.0:
-        lines.append(
-            f"- La sección alcanza **Mmax = {maximum.moment / 1e6:,.1f} kN·m**, que es {ratio:.2f} veces la resistencia ideal Mi: el exceso "
-            "proviene sobre todo del endurecimiento del acero y del confinamiento del núcleo, que el método de la norma no considera."
-        )
-    else:
-        lines.append(
-            f"- La sección alcanza **Mmax = {maximum.moment / 1e6:,.1f} kN·m**, que es solo {ratio:.2f} veces la resistencia ideal Mi: "
-            "revise los datos, porque normalmente Mmax supera a Mi."
-        )
-    if records["first_yield"].reached and records["first_yield"].curvature <= maximum.phi:
-        lines.append(
-            f"- El acero traccionado fluye (φ'y = {result.yield_curvature_first * PHI_UNIT:.2f} µrad/mm) antes del momento máximo, "
-            "de modo que la curva tiene un tramo de fluencia. Con φy = φ'y·Mi/My (Ec. 7.60) la ductilidad se mide como μφ = φ/φy."
-        )
-    elif records["first_yield"].reached:
-        lines.append(
-            "- El momento máximo ocurre antes de la primera fluencia del acero traccionado: la respuesta está controlada por la compresión del concreto."
-        )
-    else:
-        lines.append("- El acero traccionado **no fluye** antes del estado límite que termina el análisis: la sección está controlada por compresión y no se define ductilidad de curvatura.")
-    spalling = records.get("cover_spalling")
-    if spalling is not None and spalling.reached:
-        drop = 1.0 - spalling.moment / maximum.moment
-        lines.append(
-            f"- El recubrimiento se descascara a φ = {spalling.curvature * PHI_UNIT:.1f} µrad/mm (εspall = {eps_spall:g}); en ese punto el momento está "
-            f"{drop:.0%} por debajo del máximo. Después la capacidad depende del núcleo confinado."
-        )
-    lines.append(
-        f"- El análisis terminó por **{result.termination_message.lower()}** a φ = {final_state.phi * PHI_UNIT:.1f} µrad/mm"
-        + (f" (μφ = {ultimate_duct:.1f})" if ultimate_duct is not None else "")
-        + f", con M = {final_state.moment / 1e6:,.1f} kN·m ({final_state.moment / maximum.moment:.0%} de Mmax). "
-        "Si cambia el criterio de terminación, la curvatura última cambia."
+    st.markdown("\n".join("- " + line for line in interpretation_lines(result)))
+
+
+# ---------------------------------------------------------
+# 8. Diagrama de interacción P–M y ductilidad vs. carga axial
+# ---------------------------------------------------------
+
+run_id = stored["run_id"]
+settings = result.settings
+
+with st.container(border=True):
+    st.subheader("8. Diagrama de interacción P–M y ductilidad vs. carga axial")
+    st.markdown(
+        "La carga axial cambia la resistencia y, sobre todo, la ductilidad. Aquí se repite el análisis completo para varias cargas "
+        "axiales (con la misma sección y los mismos criterios de terminación) y se obtiene el momento máximo y la ductilidad de "
+        "cada una. La **curva ideal** (método de la norma, εc = 0.003) da los puntos notables: tracción pura, punto balanceado y compresión pura."
     )
-    if result.termination_key == "hoop_fracture":
-        lines.append("- La fractura del estribo se estima con un balance de energía (Mander, §3.8.2) cuyas constantes (105 MJ/m³ para el acero y 0.017√f'c para el concreto) son empíricas.")
-    if result.termination_key == "steel_ultimate":
-        lines.append("- Rige la deformación última del acero εsu; en una columna real el confinamiento o el pandeo de las barras suelen limitar antes la curvatura útil.")
-    lines.append(
-        "- **Limitaciones:** respuesta monotónica sobre la curva esqueleto (sin descarga de fibras), cortante y deslizamiento ignorados, "
-        "reconstrucción de COLUMN y no su traducción literal."
+    _, high_default = default_axial_range(model, settings)
+    capacity_kn = high_default / 0.8 / 1e3
+    i1, i2, i3 = st.columns(3)
+    n_points = i1.number_input("Número de cargas axiales", min_value=4, max_value=60, value=12, step=1, key="int_n")
+    p_min = i2.number_input("P mínima (kN)", value=0.0, step=100.0, format="%.0f", key=f"int_pmin_{run_id}")
+    p_max = i3.number_input("P máxima (kN)", value=float(round(0.8 * capacity_kn)), step=100.0, format="%.0f", key=f"int_pmax_{run_id}")
+    st.caption(
+        f"Capacidad axial del modelo ≈ {capacity_kn:,.0f} kN (compresión uniforme). Cada carga ejecuta un análisis completo "
+        "(≈ 0.5 s); cerca de la capacidad axial el equilibrio puede no converger y esos puntos se marcan."
     )
-    st.markdown("\n".join(lines))
+    if st.button("Calcular diagrama de interacción", use_container_width=True, key="int_run"):
+        if p_max <= p_min:
+            st.error("La carga máxima debe ser mayor que la mínima.")
+        else:
+            progress_bar = st.progress(0.0, text="Analizando cargas axiales…")
+            loads = np.linspace(p_min, p_max, int(n_points)) * 1e3
+            points = analysis_interaction(
+                model, settings, loads, progress=lambda i, n: progress_bar.progress(i / n, text=f"Carga axial {i} de {n}")
+            )
+            progress_bar.empty()
+            st.session_state[INTERACTION_KEY] = {"run_id": run_id, "points": points, "curve": code_interaction_curve(model)}
+
+    interaction = st.session_state.get(INTERACTION_KEY)
+    if interaction is not None and interaction["run_id"] != run_id:
+        interaction = None  # se calculó con otra configuración: ya no corresponde
+    if interaction is None:
+        st.info("Calcule el diagrama para ver los resultados.")
+    else:
+        curve, points = interaction["curve"], interaction["points"]
+        b1, b2, b3 = st.columns(3)
+        b1.metric("Tracción pura, P (kN)", f"{curve.tension_point[0]:,.0f}")
+        b2.metric("Punto balanceado: P (kN) / M (kN·m)", f"{curve.balanced_point[0]:,.0f} / {curve.balanced_point[1]:,.0f}")
+        b3.metric("Compresión pura, P (kN)", f"{curve.compression_point[0]:,.0f}")
+        failed = [p for p in points if p.error]
+        if failed:
+            st.warning(f"{len(failed)} carga(s) no se pudieron analizar: {failed[0].error}")
+        tab_pm, tab_duct, tab_table = st.tabs(["Interacción P–M", "Ductilidad vs. P", "Tabla y CSV"])
+        with tab_pm:
+            st.plotly_chart(interaction_figure(model, curve, points, settings.axial_load_n / 1e3), use_container_width=True)
+            st.caption(
+                "Azul: curva ideal. Verde: Mmax del análisis completo, que incluye el endurecimiento del acero y el confinamiento del núcleo, "
+                "y por eso supera a la curva ideal. La línea punteada es la carga axial del análisis principal."
+            )
+        with tab_duct:
+            st.plotly_chart(ductility_figure(model, points), use_container_width=True)
+            st.caption(
+                "La ductilidad disminuye al aumentar P. Los saltos aparecen cuando cambia el criterio que termina el análisis "
+                "(deformación del acero ↔ fractura del estribo): compare solo puntos con el mismo criterio. Donde el acero no fluye no se define φy."
+            )
+        with tab_table:
+            interaction_table = interaction_dataframe(points, model).rename(columns=INTERACTION_LABELS)
+            st.dataframe(interaction_table, hide_index=True, use_container_width=True)
+            st.download_button("Descargar interacción (CSV)", interaction_table.to_csv(index=False).encode("utf-8-sig"),
+                               "column_interaccion.csv", "text/csv", key="int_csv")
+
+# ---------------------------------------------------------
+# 9. Comparación de configuraciones
+# ---------------------------------------------------------
+
+with st.container(border=True):
+    st.subheader("9. Comparación de configuraciones")
+    base_t = model.section.transverse
+    st.markdown(
+        "Cada fila es una configuración de la misma columna. **Una celda vacía usa el valor de la base** "
+        f"(s = {base_t.spacing_mm:g} mm, Ø estribo = {base_t.bar_diameter_mm:g} mm, fyh = {base_t.yield_stress:g} MPa, "
+        f"P = {settings.axial_load_n / 1e3:,.0f} kN, f'co = {model.concrete.unconfined_strength:.1f} MPa). "
+        "Al cambiar el diámetro del estribo, el área transversal cambia con (Ø/Ø₀)² y las capas de barras se desplazan para conservar su distancia al estribo."
+    )
+    variants_table = st.data_editor(
+        pd.DataFrame({
+            "Nombre": ["Base", "s × 0.75", "s × 1.5"],
+            "s (mm)": [np.nan, float(round(0.75 * base_t.spacing_mm)), float(round(1.5 * base_t.spacing_mm))],
+            "Ø estribo (mm)": [np.nan] * 3,
+            "fyh (MPa)": [np.nan] * 3,
+            "P (kN)": [np.nan] * 3,
+            "f'co (MPa)": [np.nan] * 3,
+        }),
+        key=f"var_table_{run_id}", num_rows="dynamic", hide_index=True, use_container_width=True,
+        column_config={
+            "Nombre": st.column_config.TextColumn("Nombre"),
+            "s (mm)": st.column_config.NumberColumn("s (mm)", min_value=1.0, step=1.0, format="%.0f"),
+            "Ø estribo (mm)": st.column_config.NumberColumn("Ø estribo (mm)", min_value=1.0, step=1.0, format="%.1f"),
+            "fyh (MPa)": st.column_config.NumberColumn("fyh (MPa)", min_value=1.0, step=10.0, format="%.0f"),
+            "P (kN)": st.column_config.NumberColumn("P (kN)", step=50.0, format="%.0f"),
+            "f'co (MPa)": st.column_config.NumberColumn("f'co (MPa)", min_value=1.0, step=1.0, format="%.1f"),
+        },
+    )
+    manual_confinement = stored["inputs"]["confinement"] != (None, None)
+    if manual_confinement:
+        st.info("Ingresó f'cc y εcc a mano: las variantes de estribos no los modifican (solo cambian P y el resto de los datos).")
+    if st.button("Comparar configuraciones", use_container_width=True, key="var_run"):
+        def optional(value):
+            return None if pd.isna(value) else float(value)
+
+        variants = [
+            Variant(
+                name=str(row["Nombre"]) if pd.notna(row["Nombre"]) and str(row["Nombre"]).strip() else f"Configuración {i}",
+                stirrup_spacing_mm=optional(row["s (mm)"]), stirrup_diameter_mm=optional(row["Ø estribo (mm)"]),
+                stirrup_yield_mpa=optional(row["fyh (MPa)"]),
+                axial_load_n=None if pd.isna(row["P (kN)"]) else float(row["P (kN)"]) * 1e3,
+                unconfined_strength=optional(row["f'co (MPa)"]),
+            )
+            for i, (_, row) in enumerate(variants_table.iterrows(), start=1)
+        ]
+        if not variants:
+            st.error("Agregue al menos una configuración.")
+        else:
+            with st.spinner("Analizando configuraciones…"):
+                st.session_state[VARIANTS_KEY] = {
+                    "run_id": run_id,
+                    "outcomes": run_variants(model, settings, variants, recompute_confinement=not manual_confinement),
+                }
+
+    variants_state = st.session_state.get(VARIANTS_KEY)
+    if variants_state is not None and variants_state["run_id"] != run_id:
+        variants_state = None
+    if variants_state is None:
+        st.info("Ejecute la comparación para ver los resultados.")
+    else:
+        outcomes = variants_state["outcomes"]
+        for outcome in outcomes:
+            if outcome.error:
+                st.warning(f"«{outcome.variant.name}» no se pudo analizar: {outcome.error}")
+        if any(outcome.result is not None for outcome in outcomes):
+            normalized_variants = st.checkbox("Normalizar (M/Mi y φ/φy)", value=False, key="var_norm")
+            st.plotly_chart(variants_figure(outcomes, normalized_variants), use_container_width=True)
+            summary = variants_dataframe(outcomes).rename(columns=VARIANT_LABELS)
+            st.dataframe(summary, hide_index=True, use_container_width=True)
+            st.download_button("Descargar comparación (CSV)", summary.to_csv(index=False).encode("utf-8-sig"),
+                               "column_comparacion.csv", "text/csv", key="var_csv")
+            st.caption("Compare la ductilidad entre configuraciones que terminan por el mismo criterio; si cambia el criterio, cambia lo que mide μφ.")
+            finished = [o.result.termination_key for o in outcomes if o.result is not None]
+            if finished and all(key == "steel_ultimate" for key in finished):
+                st.info(
+                    "Todas las configuraciones terminan por la deformación última del acero (εsu), que no depende del confinamiento: "
+                    "por eso los estribos casi no cambian la ductilidad. Para ver su efecto use una carga axial mayor "
+                    "(con la que rige la fractura del estribo) o fije un límite de εcu."
+                )
+
+# ---------------------------------------------------------
+# 10. Informe (Word y PDF)
+# ---------------------------------------------------------
+
+with st.container(border=True):
+    st.subheader("10. Informe (Word y PDF)")
+    st.markdown(
+        "Genera un informe con los datos, el corte de la sección, los resultados, los estados límite, la interpretación y, si los "
+        "calculó, el diagrama de interacción y la comparación de configuraciones."
+    )
+    r1, r2 = st.columns(2)
+    report_title = r1.text_input("Título del informe", value="Análisis momento–curvatura de una sección de concreto armado")
+    report_author = r2.text_input("Autor", value="")
+    k1, k2 = st.columns(2)
+    include_interaction = k1.checkbox("Incluir interacción P–M y ductilidad vs. P", value=interaction is not None, disabled=interaction is None)
+    include_variants = k2.checkbox("Incluir comparación de configuraciones", value=variants_state is not None, disabled=variants_state is None)
+    if st.button("Generar informe", type="primary", use_container_width=True, key="report_run"):
+        try:
+            with st.spinner("Generando el informe…"):
+                document = build_column_report(
+                    result,
+                    arrangement=stored["arrangement"],
+                    interaction=None if not (include_interaction and interaction) else {
+                        "curve": interaction["curve"], "points": interaction["points"], "current_axial_kn": settings.axial_load_n / 1e3},
+                    variants=variants_state["outcomes"] if include_variants and variants_state else None,
+                    title=report_title,
+                    author=report_author,
+                )
+                st.session_state[REPORT_KEY] = {"run_id": run_id, "docx": write_docx(document), "pdf": write_pdf(document)}
+        except RuntimeError as error:
+            st.error(str(error))
+        except Exception as error:
+            st.error(f"No se pudo generar el informe: {error}")
+    report = st.session_state.get(REPORT_KEY)
+    if report is not None and report["run_id"] == run_id:
+        d1, d2 = st.columns(2)
+        d1.download_button("Descargar Word (.docx)", report["docx"], "informe_column.docx",
+                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True, key="report_docx")
+        d2.download_button("Descargar PDF", report["pdf"], "informe_column.pdf", "application/pdf", use_container_width=True, key="report_pdf")
+        st.caption("El informe corresponde al último cálculo ejecutado y a las secciones 8 y 9 tal como estaban al generarlo.")

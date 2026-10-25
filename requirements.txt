@@ -6,3 +6,5 @@ matplotlib
 scipy
 openpyxl
 plotly
+python-docx
+fpdf2>=2.7.6
