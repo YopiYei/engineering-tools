@@ -7,7 +7,7 @@ from calculations.structural.column_axial_response import (
     rectangular_column_area,
 )
 
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -37,6 +37,12 @@ ACTION_LABELS = {
 
 
 st.title("Column Axial Force-Displacement Response")
+
+panel_intro(
+    what="La curva fuerza–desplazamiento de una columna prismática de concreto simple bajo carga axial centrada, a partir de la curva esfuerzo–deformación del material.",
+    purpose="Muestra cómo la ley constitutiva del concreto gobierna la rigidez, la resistencia y la capacidad de deformación axial de un elemento (F = σ·A, δ = ε·L).",
+    results="Curva F–δ en compresión o tracción, área, fuerza pico, desplazamiento en el pico y último, y rigidez inicial.",
+)
 
 st.markdown(
     """

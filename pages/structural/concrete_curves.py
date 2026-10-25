@@ -10,7 +10,7 @@ from calculations.structural.concrete_properties import (
     concrete_desayi_krishnan,
 )
 
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -18,11 +18,10 @@ apply_global_styles()
 
 st.title("Concrete Stress-Strain Curves")
 
-st.markdown(
-    """
-    Interactive tool to visualize stress-strain relationships for concrete
-    in compression and tension using different models and combinations.
-    """
+panel_intro(
+    what="Curvas esfuerzo–deformación del concreto en compresión (Collins y Mitchell, De Nicolo et al., Kent y Park, Desayi y Krishnan) y en tracción (Collins y Mitchell, Restrepo y Rodríguez, Fields y Bischoff).",
+    purpose="Permite comparar leyes constitutivas y elegir la adecuada para el análisis no lineal de elementos y secciones de concreto.",
+    results="Curvas individuales, comparaciones y combinaciones de modelos para distintos valores de f'c, con sus parámetros característicos.",
 )
 
 

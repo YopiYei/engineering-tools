@@ -32,7 +32,7 @@ from utils.aisc_data import (
     load_family,
 )
 
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -77,6 +77,12 @@ AXIS_CUSTOM_TYPES = {
 
 
 st.title("Section Classification")
+
+panel_intro(
+    what="Clasifica los elementos de una sección de acero (alas y almas) según la esbeltez local de AISC 360-16, Tabla B4.1.",
+    purpose="Determina si la sección es compacta, no compacta o esbelta en flexión, o no esbelta o esbelta en compresión, lo que define el estado límite de pandeo local.",
+    results="Relación ancho-espesor λ, límites λp y λr de cada elemento y la clasificación resultante.",
+)
 
 st.caption(
     "AISC 360-16 Table B4.1 - local buckling of the elements of a section. "

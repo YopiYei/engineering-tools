@@ -60,3 +60,14 @@ def apply_global_styles():
         """,
         unsafe_allow_html=True,
     )
+
+
+def panel_intro(what, purpose, results):
+    """Introducción breve de un panel: qué calcula, para qué sirve y qué resultados entrega."""
+
+    with st.container(border=True):
+        st.markdown(
+            f"**Qué calcula:** {what}\n\n"
+            f"**Para qué sirve:** {purpose}\n\n"
+            f"**Resultados:** {results}"
+        )

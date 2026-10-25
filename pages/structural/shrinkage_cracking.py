@@ -9,19 +9,20 @@ from calculations.structural.shrinkage_cracking import (
     gilbert_crack_width,
     kgf_cm2_to_mpa,
 )
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
 
 st.title("Shrinkage Cracking in Restrained Slabs")
 
-st.markdown(
-    r"""
-    Ancho medio de fisura de una losa totalmente restringida por contracción
-    (Gilbert, 1992). Franja de 1 m de ancho.
-    """
+panel_intro(
+    what="El ancho medio de fisura de una losa totalmente restringida por contracción en función de la cuantía de acero (Gilbert, 1992).",
+    purpose="Orienta el dimensionamiento del acero de control de fisuración en losas, pavimentos y muros restringidos.",
+    results="Ancho de fisura, número y espaciamiento de fisuras, fuerza final en la losa y la curva ancho de fisura vs. cuantía.",
 )
+
+st.caption("Franja de 1 m de ancho.")
 
 with st.expander("Referencia y supuestos", expanded=False):
     st.markdown(

@@ -1,4 +1,4 @@
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -28,6 +28,12 @@ VERBOSITY_FULL = 2
 
 
 st.title("Least Squares")
+
+panel_intro(
+    what="Ajusta una recta y = m·x + b a un conjunto de datos (x, y) por mínimos cuadrados.",
+    purpose="Obtiene una relación empírica a partir de ensayos o mediciones y permite estimar valores intermedios (curvas de calibración, correlaciones de resistencia).",
+    results="Pendiente, intercepto, coeficientes de correlación y de determinación, tabla de cálculo, evaluación de y(x) o x(y) y la ecuación de regresión.",
+)
 
 
 # ---------------------------------------------------------

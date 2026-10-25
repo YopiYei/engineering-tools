@@ -29,6 +29,7 @@ tests/                  # tests de la lógica de cálculo
 | Reinforced Concrete | Concrete Stress-Strain, Column Axial Response | |
 | Reinforced Concrete | Shrinkage Cracking | Gilbert (1992), ACI Structural Journal 89(2) |
 | Reinforced Concrete | Moment-Curvature | Park & Paulay, Fig. 6.6; Mander et al. (1988) |
+| Reinforced Concrete | COLUMN — Análisis Momento–Curvatura | Mander (1984), Research Report 84-2, §7.4.2; Soesianawati (1986) |
 
 ## Cómo agregar una herramienta
 
@@ -42,3 +43,25 @@ tests/                  # tests de la lógica de cálculo
 - Cálculo y presentación separados: las páginas no contienen fórmulas, solo llaman a `calculations/`.
 - Las curvas constitutivas del concreto se reutilizan desde `calculations/structural/concrete_properties.py` cuando existen; los modelos nuevos (Park-Paulay, Mander no confinado) viven en `moment_curvature.py`.
 - La teoría extensa vive en Obsidian (`03_Masters_Degree/Cycle_2/Concrete_Design/Tarea 2/`); la app muestra solo planteamiento, ecuaciones y resultado.
+
+## COLUMN — Análisis Momento–Curvatura
+
+Análisis por fibras, monotónico, de secciones rectangulares de concreto armado con concreto confinado
+(Mander), acero con endurecimiento y carga axial constante. Es una **reconstrucción** del procedimiento de
+COLUMN descrito en la tesis de Mander (1984), no una traducción de su FORTRAN, y **no incluye la parte cíclica**.
+
+```
+calculations/structural/column_materials.py      concreto (Popovics) y acero (Ec. 2.1-2.10)
+calculations/structural/column_section.py        geometría, barras, estribos y láminas
+calculations/structural/column_confinement.py    ke, f'cc (procedimiento de 6 pasos), ecc
+calculations/structural/column_analysis.py       algoritmo de §7.4.2, Mi, phi_y, estados límite
+calculations/structural/column_examples.py       Unidades 1-4 de Soesianawati (ejemplo y validación)
+visualization/column_plots.py                    gráficos de Plotly
+pages/structural/column_mphi.py                  interfaz
+tests/test_column_mphi.py                        pruebas y validación con datos publicados
+```
+
+Convenciones: compresión positiva; N, mm, MPa; curvatura en µrad/mm en la interfaz (1/mm internamente).
+Las pruebas comparan con Soesianawati (1986), Tablas 5.1 y 8.3, con el ejemplo numérico de Mander (p. 65)
+y con el módulo `moment_curvature.py` de esta app (verificación cruzada con P = 0).
+

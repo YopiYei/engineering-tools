@@ -13,7 +13,7 @@ from calculations.structural.moment_curvature import (
     moment_curvature,
     park_beam_curve,
 )
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -30,11 +30,10 @@ STEEL_LABELS = {
 
 st.title("Moment-Curvature Analysis")
 
-st.markdown(
-    r"""
-    Diagrama momento-curvatura de secciones rectangulares en flexión pura
-    ($P=0$), por análisis de fibras.
-    """
+panel_intro(
+    what="El diagrama momento–curvatura de secciones rectangulares en flexión pura (P = 0), por análisis de fibras con los modelos de Park y Paulay o de Mander sin confinar.",
+    purpose="Permite estimar la resistencia a flexión y la ductilidad de curvatura, y comparar modelos del concreto y del acero. Para carga axial y concreto confinado use el panel COLUMN.",
+    results="Curvas M–φ (o M/bd² vs. φd en las vigas de Park y Paulay), momento máximo y ductilidad de curvatura aproximada.",
 )
 
 st.latex(r"\varphi = \frac{\varepsilon_{cm}}{kd} \qquad \sum F = 0 \qquad M = \sum F\,z")

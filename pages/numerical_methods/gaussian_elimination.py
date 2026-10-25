@@ -6,7 +6,7 @@ from calculations.numerical_methods.gaussian_elimination import (
     gaussian_elimination,
 )
 
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -22,6 +22,12 @@ VERBOSITY_FULL = 2
 
 
 st.title("Gaussian Elimination")
+
+panel_intro(
+    what="Resuelve un sistema lineal de n ecuaciones con n incógnitas por eliminación gaussiana con pivoteo parcial, mostrando cada operación entre filas.",
+    purpose="Es el método directo básico del análisis estructural numérico (por ejemplo, sistemas de rigidez K·u = F) y sirve para verificar a mano un cálculo.",
+    results="Matriz triangular superior, solución por sustitución regresiva y el desarrollo paso a paso con el nivel de detalle que elija.",
+)
 
 
 # ---------------------------------------------------------

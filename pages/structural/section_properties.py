@@ -19,7 +19,7 @@ from utils.aisc_data import (
     load_family,
 )
 
-from styles.main import apply_global_styles
+from styles.main import apply_global_styles, panel_intro
 
 
 apply_global_styles()
@@ -35,6 +35,12 @@ VERBOSITY_FULL = 2
 
 
 st.title("Section Properties")
+
+panel_intro(
+    what="Propiedades geométricas de secciones rectangulares, circulares o en I, ingresadas por sus dimensiones, o de perfiles de la base de datos AISC.",
+    purpose="Son los datos de partida para evaluar rigidez, esfuerzos y deformaciones de un elemento.",
+    results="Área, posición del centroide y momentos de inercia Ix e Iy, con el cálculo detallado y el dibujo de la sección.",
+)
 
 
 # ---------------------------------------------------------

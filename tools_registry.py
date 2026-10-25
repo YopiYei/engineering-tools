@@ -94,6 +94,14 @@ TOOLS = [
         "Moment-curvature of rectangular sections: Park-Paulay and Mander models.",
         "Park & Paulay, Fig. 6.6; Mander et al. (1988)",
     ),
+    Tool(
+        "Reinforced Concrete",
+        "COLUMN — Análisis Momento–Curvatura",
+        "pages/structural/column_mphi.py",
+        ":material/query_stats:",
+        "Moment-curvature of confined rectangular sections under axial load (monotonic, COLUMN-type fibre analysis).",
+        "Mander (1984), Research Report 84-2, §7.4.2; Soesianawati (1986)",
+    ),
 ]
 
 GROUP_ORDER = ["Numerical Methods", "Steel Sections", "Reinforced Concrete"]
