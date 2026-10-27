@@ -73,6 +73,14 @@ TOOLS = [
     ),
     Tool(
         "Reinforced Concrete",
+        "Mander Stress-Strain",
+        "pages/structural/mander_stress_strain.py",
+        ":material/show_chart:",
+        "Confined and unconfined concrete stress-strain curve (single Popovics equation).",
+        "Mander, Priestley & Park (1988), J. Struct. Eng. 114(8)",
+    ),
+    Tool(
+        "Reinforced Concrete",
         "Column Axial Response",
         "pages/structural/column_axial_response.py",
         "🧱",
